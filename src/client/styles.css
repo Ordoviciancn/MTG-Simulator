@@ -334,6 +334,10 @@ h2 {
   gap: 10px;
 }
 
+.leaveRoomButton {
+  width: 100%;
+}
+
 .player {
   display: grid;
   grid-template-columns: 1fr auto auto;
@@ -381,7 +385,7 @@ h2 {
 
 .peekTool {
   display: grid;
-  grid-template-columns: 70px 1fr 1fr 1fr;
+  grid-template-columns: 70px 1fr 1fr;
   gap: 8px;
   align-items: center;
 }
@@ -408,11 +412,12 @@ h2 {
 
 .lifeGrid {
   margin-top: 8px;
-  grid-template-columns: 1fr 88px 1fr;
+  grid-template-columns: 1fr;
 }
 
 .lifeGrid input {
   min-width: 0;
+  width: 100%;
   text-align: center;
   font-weight: 800;
   color: #ffe39a;
@@ -438,10 +443,6 @@ h2 {
     linear-gradient(90deg, rgba(16, 28, 36, 0.72), rgba(43, 34, 21, 0.68)),
     rgba(11, 10, 9, 0.48);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2), inset 0 0 14px rgba(239, 207, 159, 0.035);
-}
-
-.phaseCenter.autoPhase {
-  grid-template-columns: minmax(160px, 1fr) minmax(120px, 0.8fr) 72px;
 }
 
 .phaseCenter .phaseBadge {
@@ -491,15 +492,6 @@ h2 {
 
 .phaseNav.end {
   justify-self: end;
-}
-
-.phaseModeToggle {
-  min-height: 36px;
-  border-radius: 999px;
-  padding: 6px 10px;
-  color: #e8f8ff;
-  border-color: rgba(139, 216, 255, 0.32);
-  background: linear-gradient(135deg, rgba(44, 92, 118, 0.76), rgba(18, 32, 42, 0.84));
 }
 
 .board {
@@ -984,6 +976,12 @@ h2 {
   padding: 6px 10px;
 }
 
+.modalHeaderActions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
 .selectableCards {
   max-height: 360px;
   overflow: auto;
@@ -997,6 +995,12 @@ h2 {
 .selectableCard {
   position: relative;
   display: block;
+  border-radius: 12px;
+  padding: 2px;
+}
+
+.selectableCard.checked {
+  box-shadow: 0 0 0 3px rgba(139, 216, 255, 0.28);
 }
 
 .selectableCard > input {
@@ -1007,6 +1011,24 @@ h2 {
   width: 18px;
   height: 18px;
   accent-color: #8bd8ff;
+}
+
+.turnModePanel {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.turnModePanel button,
+.selectedMode {
+  border-color: rgba(139, 216, 255, 0.38);
+}
+
+.turnModePanel .selectedMode,
+.modalHeaderActions .selectedMode {
+  color: #06141a;
+  background: linear-gradient(135deg, #8bd8ff, #ffe39a);
+  box-shadow: 0 0 18px rgba(139, 216, 255, 0.22);
 }
 
 .counterPanel {

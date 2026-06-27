@@ -88,11 +88,13 @@ export type ClientRoomView = {
 export type ClientMessage =
   | { type: "createRoom"; playerId: string; playerName: string; deckText?: string; cardImages?: CardImageDatabase }
   | { type: "joinRoom"; roomCode: string; playerId: string; playerName: string; deckText?: string; cardImages?: CardImageDatabase }
+  | { type: "reconnectRoom"; roomCode: string; playerId: string }
+  | { type: "leaveRoom" }
   | { type: "swapSideboardCard"; cardId: string; to: "main" | "sideboard" }
   | { type: "shuffleLibrary" }
   | { type: "reorderHand"; cardId: string; targetCardId: string }
   | { type: "draw"; count: number }
-  | { type: "peekLibrary"; count: number; public?: boolean }
+  | { type: "peekLibrary"; count: number }
   | { type: "mulligan" }
   | { type: "resetGame" }
   | { type: "moveCard"; cardId: string; toZone: ZoneId; kind?: CardKind; libraryPosition?: LibraryPosition }
@@ -106,7 +108,6 @@ export type ClientMessage =
   | { type: "toggleFaceDown"; cardId: string }
   | { type: "toggleBackFace"; cardId: string }
   | { type: "setLife"; life: number }
-  | { type: "adjustLife"; delta: number }
   | { type: "adjustTableCounter"; delta: number }
   | { type: "adjustCounter"; cardId: string; counter: CounterKind; delta: number }
   | { type: "declarePhase"; phase: string }
@@ -120,4 +121,5 @@ export type ClientMessage =
 
 export type ServerMessage =
   | { type: "room"; room: ClientRoomView }
+  | { type: "leftRoom" }
   | { type: "error"; message: string };

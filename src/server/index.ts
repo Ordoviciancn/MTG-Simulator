@@ -76,6 +76,13 @@ const orderedPhases = [
   "清除阶段"
 ];
 
+const autoPhases = [
+  "战斗前主要阶段",
+  "战斗阶段",
+  "第二个主要阶段",
+  "结束阶段"
+];
+
 app.use(express.static(path.resolve(__dirname, "../../dist")));
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
@@ -119,8 +126,18 @@ function handleMessage(ws: WebSocket, message: ClientMessage) {
     }
 
     room.clients.set(ws, player.id);
-    loadPlayerDeck(room, player, message.deckText!, message.cardImages);
+    if (!player.deckText.trim()) loadPlayerDeck(room, player, message.deckText!, message.cardImages);
     broadcast(room);
+    return;
+  }
+
+  if (message.type === "reconnectRoom") {
+    const room = rooms.get(message.roomCode.trim().toUpperCase());
+    if (!room) return send(ws, { type: "error", message: "找不到房间。" });
+    const player = room.players.find((candidate) => candidate.id === message.playerId);
+    if (!player) return send(ws, { type: "error", message: "找不到房间中的玩家。" });
+    room.clients.set(ws, player.id);
+    send(ws, { type: "room", room: createRoomView(room, player.id) });
     return;
   }
 
@@ -129,6 +146,10 @@ function handleMessage(ws: WebSocket, message: ClientMessage) {
 
   const { room, player } = context;
   switch (message.type) {
+    case "leaveRoom":
+      room.clients.delete(ws);
+      send(ws, { type: "leftRoom" });
+      return;
     case "swapSideboardCard":
       swapSideboardCard(room, player, message.cardId, message.to);
       break;
@@ -143,7 +164,7 @@ function handleMessage(ws: WebSocket, message: ClientMessage) {
       drawCards(room, player, clampNumber(message.count, 1, 20));
       break;
     case "peekLibrary":
-      peekLibrary(room, player, clampNumber(message.count, 1, 50), !!message.public);
+      peekLibrary(room, player, clampNumber(message.count, 1, 50));
       break;
     case "mulligan":
       mulligan(room, player);
@@ -185,10 +206,6 @@ function handleMessage(ws: WebSocket, message: ClientMessage) {
       player.life = clampNumber(message.life, -99, 999);
       addLog(room, "生命", `${player.name} 将生命调整为 ${player.life}。`);
       break;
-    case "adjustLife":
-      player.life = clampNumber(player.life + clampNumber(message.delta, -99, 99), -99, 999);
-      addLog(room, "生命", `${player.name} 将生命调整为 ${player.life}。`);
-      break;
     case "adjustTableCounter":
       player.tableCounters = Math.max(0, player.tableCounters + clampNumber(message.delta, -999, 999));
       addLog(room, "计数器", `${player.name} 将桌面计数器调整为 ${player.tableCounters}。`);
@@ -204,6 +221,11 @@ function handleMessage(ws: WebSocket, message: ClientMessage) {
       break;
     case "setTurnMode":
       room.turnMode = message.mode;
+      if (message.mode === "auto" && !autoPhases.includes(room.phase)) {
+        room.phaseHistory.push({ activePlayerId: room.activePlayerId, phase: room.phase });
+        room.activePlayerId = player.id;
+        room.phase = autoPhases[0];
+      }
       addLog(room, "流程", `${player.name} 切换为${message.mode === "auto" ? "自动" : "手动"}阶段模式。`);
       break;
     case "undoPhase":
@@ -356,7 +378,7 @@ function drawCards(room: Room, player: PlayerState, count: number) {
   addLog(room, `${player.name} 抓 ${drawn} 张牌。`);
 }
 
-function peekLibrary(room: Room, player: PlayerState, count: number, isPublic = false) {
+function peekLibrary(room: Room, player: PlayerState, count: number) {
   let moved = 0;
   const movedCards: Card[] = [];
   for (let index = 0; index < count; index += 1) {
@@ -367,8 +389,7 @@ function peekLibrary(room: Room, player: PlayerState, count: number, isPublic = 
     moved += 1;
   }
   const names = movedCards.map((card) => card.name).join(" / ") || "无";
-  if (isPublic) addLog(room, "看顶", `${player.name} 公开查看牌库顶 ${moved} 张牌：${names}。`);
-  else addPrivateLog(player, `查看牌库顶 ${moved} 张牌：${names}。`);
+  addPrivateLog(player, `查看牌库顶 ${moved} 张牌：${names}。`);
 }
 
 function mulligan(room: Room, player: PlayerState) {
@@ -603,10 +624,13 @@ function toggleTap(room: Room, actor: PlayerState, cardId: string) {
 }
 
 function toggleFaceDown(room: Room, actor: PlayerState, cardId: string) {
-  const card = findAnyCard(room, cardId);
-  if (!card) return;
+  const located = findCardWithZone(room, actor, cardId);
+  if (!located) return;
+  const { card, zone } = located;
   card.faceDown = !card.faceDown;
-  addLog(room, "盖放", card.faceDown ? `${actor.name} 将一张牌盖放。` : `${actor.name} 翻开 ${card.name}。`);
+  const text = card.faceDown ? `${actor.name} 将一张牌盖放。` : `${actor.name} 翻开 ${card.name}。`;
+  if (zone === "hand" || zone === "peek" || zone === "library" || zone === "sideboard") addPrivateLog(actor, "盖放", text);
+  else addLog(room, "盖放", text);
 }
 
 function toggleBackFace(room: Room, actor: PlayerState, cardId: string) {
@@ -640,12 +664,14 @@ function declarePhase(room: Room, player: PlayerState, phase: string) {
 }
 
 function stepPhase(room: Room, player: PlayerState, direction: "next" | "previous") {
-  const currentIndex = orderedPhases.indexOf(room.phase);
-  const fallbackIndex = orderedPhases.indexOf("维持阶段");
+  const phases = room.turnMode === "auto" ? autoPhases : orderedPhases;
+  const fallbackPhase = room.turnMode === "auto" ? autoPhases[0] : "维持阶段";
+  const currentIndex = phases.indexOf(room.phase);
+  const fallbackIndex = phases.indexOf(fallbackPhase);
   const baseIndex = currentIndex >= 0 ? currentIndex : fallbackIndex;
   const delta = direction === "next" ? 1 : -1;
-  const nextIndex = Math.max(0, Math.min(orderedPhases.length - 1, baseIndex + delta));
-  declarePhase(room, player, orderedPhases[nextIndex]);
+  const nextIndex = Math.max(0, Math.min(phases.length - 1, baseIndex + delta));
+  declarePhase(room, player, phases[nextIndex]);
 }
 
 function undoPhase(room: Room, player: PlayerState) {
@@ -661,10 +687,15 @@ function endTurn(room: Room, player: PlayerState) {
   if (!nextPlayer) return;
   room.phaseHistory.push({ activePlayerId: room.activePlayerId, phase: room.phase });
   room.activePlayerId = nextPlayer.id;
-  room.phase = "维持阶段";
   untapPlayerPermanents(room, nextPlayer.id);
-  addLog(room, `${player.name} 回合结束。进入 ${nextPlayer.name} 的维持阶段，并自动重置其战场。`);
-  if (room.turnMode === "auto") drawCards(room, nextPlayer, 1);
+  if (room.turnMode === "auto") {
+    room.phase = autoPhases[0];
+    drawCards(room, nextPlayer, 1);
+    addLog(room, `${player.name} 回合结束。${nextPlayer.name} 自动重置并抓 1，进入战斗前主要阶段。`);
+  } else {
+    room.phase = "维持阶段";
+    addLog(room, `${player.name} 回合结束。进入 ${nextPlayer.name} 的维持阶段，并自动重置其战场。`);
+  }
 }
 
 function addChat(room: Room, player: PlayerState, text: string) {
@@ -811,6 +842,23 @@ function findAnyCard(room: Room, cardId: string) {
     if (card) return card;
   }
   return findPublicCard(room, cardId);
+}
+
+function findCardWithZone(room: Room, actor: PlayerState, cardId: string): { card: Card; zone: CardSourceZone | "sideboard" } | null {
+  for (const candidate of [
+    { zone: "hand" as const, cards: actor.hand },
+    { zone: "library" as const, cards: actor.library },
+    { zone: "peek" as const, cards: actor.peek },
+    { zone: "sideboard" as const, cards: actor.sideboard }
+  ]) {
+    const card = candidate.cards.find((item) => item.id === cardId);
+    if (card) return { card, zone: candidate.zone };
+  }
+  for (const zone of publicZoneIds) {
+    const card = room.publicZones[zone].find((item) => item.id === cardId);
+    if (card) return { card, zone };
+  }
+  return null;
 }
 
 function getOwner(room: Room, card: Card) {

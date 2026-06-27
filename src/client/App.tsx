@@ -84,18 +84,26 @@ export function App() {
   useEffect(() => {
     const ws = new WebSocket(getWebSocketUrl());
     wsRef.current = ws;
+    ws.onopen = () => {
+      const lastRoomCode = localStorage.getItem("mtg-last-room-code");
+      if (lastRoomCode) ws.send(JSON.stringify({ type: "reconnectRoom", roomCode: lastRoomCode, playerId } satisfies ClientMessage));
+    };
     ws.onmessage = (event) => {
       const message = JSON.parse(event.data) as ServerMessage;
       if (message.type === "room") {
         setRoom(message.room);
+        localStorage.setItem("mtg-last-room-code", message.room.roomCode);
         setError("");
+      } else if (message.type === "leftRoom") {
+        setRoom(null);
+        localStorage.removeItem("mtg-last-room-code");
       } else {
         setError(translateServerMessage(message.message, createTranslator(appLanguage)));
       }
     };
     ws.onclose = () => setError(createTranslator(appLanguage)("connectionClosed"));
     return () => ws.close();
-  }, [appLanguage]);
+  }, [appLanguage, playerId]);
 
   const you = useMemo(() => room?.players.find((player) => player.id === room.youId), [room]);
   const opponent = useMemo(() => room?.players.find((player) => player.id !== room.youId), [room]);
@@ -202,8 +210,8 @@ export function App() {
     });
   }
 
-  function extractPeekCards(isPublic = false) {
-    send({ type: "peekLibrary", count: peekCount, public: isPublic });
+  function extractPeekCards() {
+    send({ type: "peekLibrary", count: peekCount });
     setShowPeek(true);
   }
 
@@ -214,6 +222,12 @@ export function App() {
       return;
     }
     send({ type: "setLife", life: Math.max(-99, Math.min(999, Math.floor(nextLife))) });
+  }
+
+  function leaveRoom() {
+    send({ type: "leaveRoom" });
+    setRoom(null);
+    localStorage.removeItem("mtg-last-room-code");
   }
 
   async function importLocalDeck(file: File | undefined) {
@@ -384,6 +398,7 @@ export function App() {
             <section className="players">
               <PlayerCard t={t} name={you?.name ?? t("you")} life={you?.life ?? 20} library={you?.libraryCount ?? 0} hand={you?.handCount ?? 0} mulligans={you?.mulligans ?? 0} isYou />
               <PlayerCard t={t} name={opponent?.name ?? t("waitingOpponent")} life={opponent?.life ?? 20} library={opponent?.libraryCount ?? 0} hand={opponent?.handCount ?? 0} mulligans={opponent?.mulligans ?? 0} />
+              <button className="secondary leaveRoomButton" onClick={leaveRoom}>退出房间</button>
             </section>
 
             <section>
@@ -400,7 +415,6 @@ export function App() {
                 <button disabled={!selectedIsDoubleFaced} onClick={() => selectedCardId && send({ type: "toggleBackFace", cardId: selectedCardId })}>{selectedCard?.backFaceUp ? t("frontFace") : t("backFace")}</button>
               </div>
               <div className="buttonGrid lifeGrid">
-                <button onClick={() => send({ type: "adjustLife", delta: 1 })}>{t("lifeUp")}</button>
                 <input
                   aria-label={t("life")}
                   type="number"
@@ -411,8 +425,26 @@ export function App() {
                     if (event.key === "Enter") commitLifeDraft();
                   }}
                 />
-                <button onClick={() => send({ type: "adjustLife", delta: -1 })}>{t("lifeDown")}</button>
               </div>
+            </section>
+
+            <section>
+              <h2>阶段模式</h2>
+              <div className="turnModePanel">
+                <button
+                  className={room.turn.mode === "manual" ? "selectedMode" : ""}
+                  onClick={() => send({ type: "setTurnMode", mode: "manual" })}
+                >
+                  手动
+                </button>
+                <button
+                  className={room.turn.mode === "auto" ? "selectedMode" : ""}
+                  onClick={() => send({ type: "setTurnMode", mode: "auto" })}
+                >
+                  自动
+                </button>
+              </div>
+              <p className="hint">自动模式只保留主一、战斗、主二、结束；换回合时自动重置并抽一。</p>
             </section>
 
             <section>
@@ -425,8 +457,7 @@ export function App() {
                   value={peekCount}
                   onChange={(event) => setPeekCount(Math.max(1, Math.min(50, Number(event.target.value) || 1)))}
                 />
-                <button disabled={!deckReady} onClick={() => extractPeekCards(false)}>{t("peekLibraryTop")}</button>
-                <button disabled={!deckReady} onClick={() => extractPeekCards(true)}>公开看顶</button>
+                <button disabled={!deckReady} onClick={extractPeekCards}>{t("peekLibraryTop")}</button>
                 <button disabled={peekCards.length === 0} onClick={() => setShowPeek(true)}>{t("continuePeek", { count: peekCards.length })}</button>
               </div>
               <p className="hint">{t("peekHint")}</p>
@@ -545,7 +576,6 @@ export function App() {
                   onProcessStackItem={(stackItemId) => send({ type: "processStackItem", stackItemId })}
                   turn={room.turn}
                   onStepPhase={(direction) => send({ type: "stepPhase", direction })}
-                  onSetTurnMode={(mode) => send({ type: "setTurnMode", mode })}
                   onEndTurn={() => send({ type: "endTurn" })}
                   youId={room.youId}
                   youName={you?.name ?? t("you")}
@@ -588,7 +618,7 @@ export function App() {
 
           {showLibrary && <LibrarySearch t={t} cards={filteredLibrary} query={libraryFilter} onQueryChange={setLibraryFilter} onClose={() => setShowLibrary(false)} onMove={moveCard} />}
           {showSideboard && you && <SideboardModal t={t} main={you.library} sideboard={you.sideboard} onClose={() => setShowSideboard(false)} onMove={(cardId, to) => send({ type: "swapSideboardCard", cardId, to })} />}
-          {showPeek && <PeekLibraryModal t={t} cards={peekCards} selectedCardId={selectedCardId} onSelect={setSelectedCardId} onClose={() => setShowPeek(false)} onMove={moveCard} onMoveMany={moveCards} />}
+          {showPeek && <PeekLibraryModal t={t} cards={peekCards} selectedCardId={selectedCardId} onSelect={setSelectedCardId} onClose={() => setShowPeek(false)} onMove={moveCard} onMoveMany={moveCards} onToggleFaceDown={(cardId) => send({ type: "toggleFaceDown", cardId })} />}
           {showDice && <DiceModal t={t} onClose={() => setShowDice(false)} onRoll={rollDice} customSides={customDiceSides} setCustomSides={setCustomDiceSides} />}
           {detailModal && (
             <ZoneDetailModal
@@ -792,7 +822,6 @@ function Battlefield(props: {
   onProcessStackItem: (stackItemId: string) => void;
   turn: ClientRoomView["turn"];
   onStepPhase: (direction: "previous" | "next") => void;
-  onSetTurnMode: (mode: "manual" | "auto") => void;
   onEndTurn: () => void;
   youId: string;
   youName: string;
@@ -831,7 +860,6 @@ function Battlefield(props: {
             t={props.t}
             turn={props.turn}
             onStepPhase={props.onStepPhase}
-            onSetTurnMode={props.onSetTurnMode}
             onEndTurn={props.onEndTurn}
           />
         </div>
@@ -901,20 +929,17 @@ function PhaseCenter(props: {
   t: Translator;
   turn: ClientRoomView["turn"];
   onStepPhase: (direction: "previous" | "next") => void;
-  onSetTurnMode: (mode: "manual" | "auto") => void;
   onEndTurn: () => void;
 }) {
-  const isAuto = props.turn.mode === "auto";
   return (
-    <section className={isAuto ? "phaseCenter autoPhase" : "phaseCenter"}>
-      {!isAuto && <button className="phaseNav previous" onClick={() => props.onStepPhase("previous")}>{props.t("previousPhase")}</button>}
+    <section className="phaseCenter">
+      <button className="phaseNav previous" onClick={() => props.onStepPhase("previous")}>{props.t("previousPhase")}</button>
       <div className="phaseBadge">
         <span>{props.turn.activePlayerName}</span>
         <strong>{translatePhase(props.turn.phase, props.t)}</strong>
       </div>
-      {!isAuto && <button className="phaseNav next" onClick={() => props.onStepPhase("next")}>{props.t("nextPhase")}</button>}
+      <button className="phaseNav next" onClick={() => props.onStepPhase("next")}>{props.t("nextPhase")}</button>
       <button className="phaseNav end danger" onClick={props.onEndTurn}>{props.t("endTurn")}</button>
-      <button className="phaseModeToggle" onClick={() => props.onSetTurnMode(isAuto ? "manual" : "auto")}>{isAuto ? "手动" : "自动"}</button>
     </section>
   );
 }
@@ -977,10 +1002,11 @@ function ZoneDetailModal(props: {
   onMoveMany: (cardIds: string[], zone: ZoneId, kind?: CardKind, libraryPosition?: LibraryPosition) => void;
   onClose: () => void;
 }) {
+  const [multiSelect, setMultiSelect] = useState(false);
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const activeCardId = props.cards.some((card) => card.id === props.selectedCardId) ? props.selectedCardId : null;
   const selectedIds = [...checkedIds].filter((cardId) => props.cards.some((card) => card.id === cardId));
-  const actionIds = selectedIds.length ? selectedIds : activeCardId ? [activeCardId] : [];
+  const actionIds = multiSelect ? selectedIds : activeCardId ? [activeCardId] : [];
   function toggleChecked(cardId: string) {
     setCheckedIds((current) => {
       const next = new Set(current);
@@ -999,21 +1025,33 @@ function ZoneDetailModal(props: {
       <section className="libraryModal panel" onClick={(event) => event.stopPropagation()}>
         <div className="modalHeader">
           <h2>{props.title}</h2>
-          <button className="secondary" onClick={props.onClose}>{props.t("close")}</button>
+          <div className="modalHeaderActions">
+            <button className={multiSelect ? "selectedMode" : "secondary"} onClick={() => {
+              setMultiSelect((value) => !value);
+              setCheckedIds(new Set());
+            }}>多选</button>
+            <button className="secondary" onClick={props.onClose}>{props.t("close")}</button>
+          </div>
         </div>
-        <div className="bulkBar">
-          <span>已选 {selectedIds.length}</span>
-          <button onClick={() => setCheckedIds(new Set(props.cards.map((card) => card.id)))}>全选</button>
-          <button onClick={() => setCheckedIds(new Set())}>清空</button>
-        </div>
-        <div className="selectableCards">
-          {props.cards.map((card) => (
-            <label key={card.id} className="selectableCard">
-              <input type="checkbox" checked={checkedIds.has(card.id)} onChange={() => toggleChecked(card.id)} />
-              <Cards t={props.t} cards={[card]} selectedCardId={props.selectedCardId} onSelect={props.onSelect} />
-            </label>
-          ))}
-        </div>
+        {multiSelect ? (
+          <>
+            <div className="bulkBar">
+              <span>已选 {selectedIds.length}</span>
+              <button onClick={() => setCheckedIds(new Set(props.cards.map((card) => card.id)))}>全选</button>
+              <button onClick={() => setCheckedIds(new Set())}>清空</button>
+            </div>
+            <div className="selectableCards">
+              {props.cards.map((card) => (
+                <label key={card.id} className={checkedIds.has(card.id) ? "selectableCard checked" : "selectableCard"}>
+                  <input type="checkbox" checked={checkedIds.has(card.id)} onChange={() => toggleChecked(card.id)} />
+                  <Cards t={props.t} cards={[card]} selectedCardId={checkedIds.has(card.id) ? card.id : null} onSelect={toggleChecked} />
+                </label>
+              ))}
+            </div>
+          </>
+        ) : (
+          <Cards t={props.t} cards={props.cards} selectedCardId={props.selectedCardId} onSelect={props.onSelect} />
+        )}
         <div className="buttonGrid libraryMoveGrid">
           <button disabled={actionIds.length === 0} onClick={() => moveAction("battlefield", "spell")}>{props.t("toBattlefield")}</button>
           <button disabled={actionIds.length === 0} onClick={() => moveAction("hand")}>{props.t("toHand")}</button>
@@ -1037,11 +1075,13 @@ function PeekLibraryModal(props: {
   onClose: () => void;
   onMove: (cardId: string, zone: ZoneId, kind?: CardKind, libraryPosition?: LibraryPosition) => void;
   onMoveMany: (cardIds: string[], zone: ZoneId, kind?: CardKind, libraryPosition?: LibraryPosition) => void;
+  onToggleFaceDown: (cardId: string) => void;
 }) {
+  const [multiSelect, setMultiSelect] = useState(false);
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const activeCardId = props.cards.some((card) => card.id === props.selectedCardId) ? props.selectedCardId : null;
   const selectedIds = [...checkedIds].filter((cardId) => props.cards.some((card) => card.id === cardId));
-  const actionIds = selectedIds.length ? selectedIds : activeCardId ? [activeCardId] : [];
+  const actionIds = multiSelect ? selectedIds : activeCardId ? [activeCardId] : [];
   function toggleChecked(cardId: string) {
     setCheckedIds((current) => {
       const next = new Set(current);
@@ -1060,24 +1100,37 @@ function PeekLibraryModal(props: {
       <section className="libraryModal panel" onClick={(event) => event.stopPropagation()}>
         <div className="modalHeader">
           <h2>{props.t("peekTitle", { count: props.cards.length })}</h2>
-          <button className="secondary" onClick={props.onClose}>{props.t("close")}</button>
+          <div className="modalHeaderActions">
+            <button className={multiSelect ? "selectedMode" : "secondary"} onClick={() => {
+              setMultiSelect((value) => !value);
+              setCheckedIds(new Set());
+            }}>多选</button>
+            <button className="secondary" onClick={props.onClose}>{props.t("close")}</button>
+          </div>
         </div>
         <p className="hint">{props.t("peekModalHint")}</p>
-        <div className="bulkBar">
-          <span>已选 {selectedIds.length}</span>
-          <button onClick={() => setCheckedIds(new Set(props.cards.map((card) => card.id)))}>全选</button>
-          <button onClick={() => setCheckedIds(new Set())}>清空</button>
-        </div>
-        <div className="selectableCards">
-          {props.cards.map((card) => (
-            <label key={card.id} className="selectableCard">
-              <input type="checkbox" checked={checkedIds.has(card.id)} onChange={() => toggleChecked(card.id)} />
-              <Cards t={props.t} cards={[card]} selectedCardId={props.selectedCardId} onSelect={props.onSelect} />
-            </label>
-          ))}
-        </div>
+        {multiSelect ? (
+          <>
+            <div className="bulkBar">
+              <span>已选 {selectedIds.length}</span>
+              <button onClick={() => setCheckedIds(new Set(props.cards.map((card) => card.id)))}>全选</button>
+              <button onClick={() => setCheckedIds(new Set())}>清空</button>
+            </div>
+            <div className="selectableCards">
+              {props.cards.map((card) => (
+                <label key={card.id} className={checkedIds.has(card.id) ? "selectableCard checked" : "selectableCard"}>
+                  <input type="checkbox" checked={checkedIds.has(card.id)} onChange={() => toggleChecked(card.id)} />
+                  <Cards t={props.t} cards={[card]} selectedCardId={checkedIds.has(card.id) ? card.id : null} onSelect={toggleChecked} />
+                </label>
+              ))}
+            </div>
+          </>
+        ) : (
+          <Cards t={props.t} cards={props.cards} selectedCardId={props.selectedCardId} onSelect={props.onSelect} />
+        )}
         <div className="buttonGrid libraryMoveGrid">
           <button disabled={actionIds.length === 0} onClick={() => moveAction("hand")}>{props.t("toHand")}</button>
+          <button disabled={actionIds.length !== 1} onClick={() => actionIds[0] && props.onToggleFaceDown(actionIds[0])}>盖放/翻开</button>
           <button disabled={actionIds.length === 0} onClick={() => moveAction("stack")}>{props.t("toStack")}</button>
           <button disabled={actionIds.length === 0} onClick={() => moveAction("graveyard")}>{props.t("toGraveyard")}</button>
           <button disabled={actionIds.length === 0} onClick={() => moveAction("exile")}>{props.t("toExile")}</button>
