@@ -159,6 +159,8 @@ http://127.0.0.1:8787
 | `scripts\dev.cmd` | 启动开发前端和后端 |
 | `scripts\build.cmd` | 类型检查并构建前端 |
 | `scripts\remote.cmd` | 构建并通过 Cloudflare Quick Tunnel 暴露公网临时链接 |
+| `scripts\desktop-launcher.cmd` | 桌面启动器：构建、启动本地服务、打开浏览器、生成并复制公网链接 |
+| `scripts\create-desktop-shortcut.cmd` | 在桌面创建 `MTG Tabletop` 快捷方式 |
 | `scripts\show-lan-address.cmd` | 显示局域网访问地址 |
 
 示例：
@@ -167,6 +169,23 @@ http://127.0.0.1:8787
 cd D:\MTG-Tabletop
 .\scripts\dev.cmd
 ```
+
+如果只是想双击开局，推荐运行：
+
+```powershell
+.\scripts\create-desktop-shortcut.cmd
+```
+
+之后桌面会出现 `MTG Tabletop` 快捷方式。双击它会自动：
+
+1. 检查 Node.js / pnpm。
+2. 首次运行时安装依赖。
+3. 构建项目。
+4. 启动本地服务并打开浏览器。
+5. 启动 Cloudflare Quick Tunnel。
+6. 自动识别 `https://*.trycloudflare.com` 公网链接并复制到剪贴板。
+
+游戏期间不要关闭启动器窗口；关闭窗口后本地服务和公网链接都会停止。
 
 ---
 
