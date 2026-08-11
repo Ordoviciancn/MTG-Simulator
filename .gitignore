@@ -6,3 +6,4 @@ tools/*.exe
 .env.local
 *.log
 *.tmp
+.worktrees/
