@@ -29,7 +29,6 @@ pnpm start
 - 手牌、牌库、看顶和换备等私密操作不得泄露真实卡名到公开记录。
 - 正常房间状态当前只保存在服务端内存中；重启服务后房间消失。
 - 卡图来源为 Scryfall，不提交批量卡图、缓存、`dist`、`node_modules` 或 `tools/*.exe`。
-- 正常对局与演示、测试模式必须隔离，不能写入彼此的房间或浏览器持久状态。
 - Windows PowerShell 脚本优先使用 ASCII 提示文字，避免 Windows PowerShell 5 的无 BOM UTF-8 解析问题。
 - 保持中英文界面字典同步；卡名、聊天和玩家输入不自动翻译。
 
