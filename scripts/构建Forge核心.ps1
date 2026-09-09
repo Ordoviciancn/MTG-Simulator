@@ -20,7 +20,7 @@ try {
     $env:JAVA_HOME = $JdkHome
     Push-Location $ForgePath
     try {
-        & $MavenPath '-B' '-ntp' "-Dmaven.repo.local=$repository" '-pl' 'forge-game' '-am' 'package'
+        & $MavenPath '-B' '-ntp' "-Dmaven.repo.local=$repository" '-pl' 'forge-ai' '-am' 'package' 'dependency:build-classpath' '-Dmdep.outputFile=target/runtime-classpath.txt'
         if ($LASTEXITCODE -ne 0) { throw 'Forge reactor build failed.' }
     } finally { Pop-Location }
 } finally { $env:JAVA_HOME = $previousJavaHome }

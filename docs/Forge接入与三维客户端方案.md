@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-Forge 固定版本的父工程、forge-core 和 forge-game 已在本机编译通过，上游自带的 3 项测试通过；尚未接通网页或启动可交互对局，现有房间仍运行手动牌桌。参考视频未能读取，以下动画为待验证的设计，不是逐帧复刻结果。
+Forge 固定版本的父工程、forge-core、forge-game 和 forge-ai 已编译通过，上游自带的 3 项测试通过；Node 调用 Java 的最小初始化、抓牌与事件验证已通过。尚未接通网页或启动可交互对局，现有房间仍运行手动牌桌。参考视频未能读取，以下动画为待验证的设计，不是逐帧复刻结果。
 
 上游：https://github.com/Card-Forge/forge 。本次核对 HEAD 为 `c86308451651af63c1b4a69a2c47f9cd478d53f6`，记录于 `config/forge-source.json`。构建要求来自上游 pom.xml：Java 17，Maven >= 3.8.1。Forge 仓库标注 GPL-3.0；引入、修改与分发上游代码须保留许可证及对应源码安排，不因独立进程就假定免除义务。
 
@@ -60,3 +60,18 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/构建Forge核心.ps
 脚本核对固定 Git 提交，通过 Maven reactor 构建并运行测试；只在脚本执行期间设置 JAVA_HOME，不修改系统环境。可用 `-MavenPath` 和 `-ForgePath` 覆盖默认位置。代理使用调用环境的 MAVEN_OPTS，不在脚本内固定代理服务器。
 
 构建结果：Forge Parent / Core / Game 全部 SUCCESS；forge-game 测试 3 项，无失败、错误或跳过。产物为各模块 target 内的 JAR，不能当作已经提供网页对局服务的独立程序。下一阶段仍需初始化卡牌资源、实现玩家选择适配器、按玩家脱敏的快照与事件桥接。
+
+## Node 到 Java 的验证入口
+
+构建脚本同时生成 Maven 解析的运行时 classpath，避免把构建插件的旧依赖混入引擎运行环境。执行：
+
+```powershell
+$env:JAVA_HOME = "D:/Program Files/JDK"
+pnpm forge:probe
+```
+
+`scripts/forge-probe.ts` 检查上游版本后以独立进程启动 `bridge/forge/ForgeProbe.java`，设置 60 秒超时并校验结构化结果。临时参数文件置于 `.local-tools`，退出后清理。
+
+Java 验证程序从上游 Mountain 卡牌脚本构造卡牌、创建包含两名 AI 控制器玩家的真实 Game 对象，将三张牌加入牌库后调用 Forge 抓牌函数，并确认事件订阅收到事件。输出必须是两名玩家、牌库两张、手牌一张。
+
+这是固定测试场景，不对外暴露房间接口，不含身份验证或双客户端可见性逻辑。它没有启动 Match.startGame，没有完整加载全卡数据库，也没有验证费用、优先权或咒语结算；`matchStarted:false` 必须保留以明确边界。现阶段不可将此命令的成功作为自动房间上线依据。

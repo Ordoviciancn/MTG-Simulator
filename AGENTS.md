@@ -47,4 +47,6 @@ pnpm start
 - 手动房间保持玩家裁定；新增自动房间以 Forge 为权威状态源，不重建简化白名单规则引擎。
 - Forge 方案与状态见 `docs/Forge接入与三维客户端方案.md`；未完成真实引擎集成测试前不得宣称已接入。
 
-- Forge 核心构建使用 `scripts/构建Forge核心.ps1 -JdkHome <JDK目录>`；通过 reactor 执行 forge-game 及依赖的测试和打包。源码、Maven、依赖缓存和产物均留在忽略目录 `.local-tools/`。
+- Forge 核心构建使用 `scripts/构建Forge核心.ps1 -JdkHome <JDK目录>`；通过 reactor 执行 forge-ai 及依赖的测试、打包和运行时 classpath 导出。源码、Maven、依赖缓存和产物均留在忽略目录 `.local-tools/`。
+
+- `pnpm forge:probe` 需要 JAVA_HOME 和已构建的 Forge，验证 Node/Java 进程及最小 Game 状态，不等同于完整对局或网页接入；相关变更需运行该验证。
