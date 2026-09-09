@@ -141,3 +141,35 @@ h2 { font-size: 14px; letter-spacing: .04em; color: #d4c19e; }
 .battleBand .cards { gap: 24px; padding: 20px; }
 .playmat .attachedCard { transform: rotate(var(--base-rotation)); }
 .playmat .attachedCard.tapped { transform: rotate(calc(var(--base-rotation) + 90deg)); }
+
+.zoneDock { display: grid; gap: 12px; }
+.zoneDock h2 { margin: 0; }
+.libraryPile { display: grid; justify-items: center; gap: 8px; padding: 14px; background: radial-gradient(ellipse at top,#29434a88,#0a141f); border-color: #88c4ce55; }
+.deckVisual { display: block; position: relative; width: 74px; height: 104px; margin: 0 5px 5px 0; border-radius: 6px; box-shadow: 3px 3px 0 #4a4840,5px 5px 0 #142130,7px 7px 0 #6b5a3e; transition: translate .2s; }
+.deckVisual img { width: 100%; height: 100%; object-fit: contain; border-radius: 6px; }
+.libraryPile:hover:not(:disabled) .deckVisual { translate: 0 -4px; }
+.libraryPile:active:not(:disabled) .deckVisual { translate: 3px 2px; }
+.deckPulse { position: absolute; inset: 0; border: 1px solid #e5c382; border-radius: inherit; pointer-events: none; animation: pilePulse .45s ease-out; }
+.pileLabel { display: flex; justify-content: space-between; align-items: center; gap: 12px; width: 100%; }
+.zoneNumber { color: #ecd8ac; font: 18px Georgia,serif; animation: countArrive .24s ease-out; }
+.destinationPiles { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.destinationPile { min-width: 0; border: 1px dashed #a6b3bd60; border-radius: 6px; transition: background .18s,border-color .18s,box-shadow .18s; }
+.pileOpen { width: 100%; height: 100%; display: grid; gap: 7px; padding: 8px; background: #121d28; border: 0; }
+.pileArtwork { display: grid; place-items: center; height: 103px; color: #98b9c5; font: 38px Georgia,serif; animation: countArrive .25s ease-out; }
+.pileArtwork img { width: 100%; height: 100%; min-height: 0; object-fit: contain; }
+.exilePile .pileArtwork { color: #baa6e2; background: radial-gradient(ellipse,#79619522,transparent); }
+.pileOpen small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; color: #9aaebd; }
+.pileLabel strong { font-size: 12px; }
+.dockHint { margin: 0; font-size: 10px; color: #93a8b6; text-align: center; }
+.dropReady { outline: 2px solid #8ddfec; outline-offset: 2px; box-shadow: 0 0 24px #6dbfd75c,inset 0 0 30px #6dbfd726; }
+.dropReady .pileOpen { background: #23434e; }
+.handArea .cardGroup { animation: handArrive .3s cubic-bezier(.2,.8,.2,1); }
+.table.toolsOpen > .sidebar { animation: panelArrive .2s ease-out; }
+.modalBackdrop { animation: fadeIn .15s ease-out; }
+.libraryModal,.imagePreviewModal,.diceModal { animation: panelArrive .2s ease-out; }
+@keyframes handArrive { from { opacity: 0; translate: 45px -18px; } to { opacity: 1; translate: 0 0; } }
+@keyframes panelArrive { from { opacity: 0; translate: -12px 0; } to { opacity: 1; translate: 0 0; } }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes countArrive { from { opacity: .35; translate: 0 -5px; } to { opacity: 1; translate: 0 0; } }
+@keyframes pilePulse { from { box-shadow: 0 0 18px #e5c382bb; opacity: 1; } to { box-shadow: 0 0 0 transparent; opacity: 0; } }
+@media (max-width: 760px) { .zoneDock { grid-template-columns: 100px minmax(0,1fr); } .zoneDock h2,.dockHint,.zoneDock > .publicPlayer { grid-column: 1 / -1; } .libraryPile { padding: 8px; } }

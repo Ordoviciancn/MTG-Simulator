@@ -43,6 +43,11 @@ test('manual tabletop permits multiple lands and unpaid spells while preserving 
   assert.equal(result.room.players.find(p=>p.id==='test-b')!.life,20);
   assert.equal(result.room.publicZones.stack.length,0);
   assert.equal(result.room.publicZones.graveyard[0].id,bolt.id);
+  a.send({type:'moveCard',cardId:bolt.id,toZone:'exile'}); const exiled=await a.next(); await b.next();
+  assert.equal(exiled.type,'room'); if(exiled.type==='room') {
+    assert.equal(exiled.room.publicZones.exile[0].id,bolt.id);
+    assert.equal(exiled.room.publicZones.graveyard.length,0);
+  }
   a.send({type:'setLife',life:19}); const life=await a.next(); await b.next();
   assert.equal(life.type,'room'); if(life.type==='room') assert.equal(life.room.players.find(p=>p.id==='test-a')!.life,19);
 });

@@ -8,6 +8,9 @@ export const languageNames: Record<AppLanguage, string> = {
 const zh = {
   tableTools: "牌桌工具",
   closeTools: "收起工具",
+  clickToDraw: "点击抽一张",
+  dropCardHere: "拖牌到这里",
+  zoneDockHint: "拖入移动 · 点击查看区域",
   cardActions: "卡牌操作",
   clearSelection: "取消选择",
   decreaseLife: "生命减一",
@@ -224,6 +227,9 @@ const zh = {
 const en: Record<keyof typeof zh, string> = {
   tableTools: "Table tools",
   closeTools: "Close tools",
+  clickToDraw: "Click to draw one",
+  dropCardHere: "Drop a card here",
+  zoneDockHint: "Drop to move · Click to inspect",
   cardActions: "Card actions",
   clearSelection: "Clear selection",
   decreaseLife: "Decrease life",

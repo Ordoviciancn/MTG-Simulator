@@ -603,6 +603,8 @@ export function App() {
           </section>
 
           <aside className="panel log">
+            <PublicInfo t={t} room={room} onOpen={setDetailModal} onMove={moveCard} onDraw={() => send({ type: "draw", count: 1 })} />
+
             <section className="selectionActions" aria-label={t("cardActions")}>
               <h2>{t("cardActions")}</h2>
               <p className="selectedName" aria-live="polite">{selectedCard?.name ?? t("selectCardHint")}</p>
@@ -616,7 +618,6 @@ export function App() {
               </div>}
             </section>
             <div className="quickActions"><button className="secondary" onClick={() => send({ type: "draw", count: 1 })}>{t("drawOne")}</button><button className="secondary" onClick={() => selectedCardId && send({ type: "toggleTap", cardId: selectedCardId })} disabled={!selectedCardId}>{t("tapUntap")}</button></div>
-            <PublicInfo t={t} room={room} onOpen={setDetailModal} />
 
             <h2>{t("publicLogChat")}</h2>
             <div className="chatBox">
@@ -990,22 +991,36 @@ function HandArea(props: {
   );
 }
 
-function PublicInfo(props: { t: Translator; room: ClientRoomView; onOpen: (modal: DetailModalState) => void }) {
-  const players = props.room.players;
+function PublicInfo(props: { t: Translator; room: ClientRoomView; onOpen: (modal: DetailModalState) => void; onMove: (cardId: string, zone: ZoneId) => void; onDraw: () => void }) {
+  const you = props.room.players.find(player => player.id === props.room.youId);
   return (
-    <section className="publicInfo">
+    <section className="publicInfo zoneDock">
       <h2>{props.t("publicZones")}</h2>
-      {players.map((player) => {
-        const graveyard = props.room.publicZones.graveyard.filter((card) => card.ownerId === player.id);
-        const exile = props.room.publicZones.exile.filter((card) => card.ownerId === player.id);
-        return (
-          <div key={player.id} className={player.id === props.room.youId ? "publicPlayer youPublic" : "publicPlayer"}>
-            <strong>{player.id === props.room.youId ? props.t("you") : player.name}</strong>
-            <ZoneSummary t={props.t} title={props.t("graveyard")} cards={graveyard} onOpen={() => props.onOpen({ title: `${player.name} ${props.t("graveyard")}`, zone: "graveyard", playerId: player.id })} />
-            <ZoneSummary t={props.t} title={props.t("exile")} cards={exile} onOpen={() => props.onOpen({ title: `${player.name} ${props.t("exile")}`, zone: "exile", playerId: player.id })} />
-          </div>
-        );
-      })}
+      <button className="libraryPile" disabled={!you?.libraryCount} onClick={props.onDraw} aria-label={`${props.t("drawOne")} · ${props.t("library")} ${you?.libraryCount ?? 0}`}>
+        <span className="deckVisual" aria-hidden="true"><img src="/mtg-card-back.png" alt="" /><span key={you?.libraryCount} className="deckPulse" /></span>
+        <span className="pileLabel"><strong>{props.t("library")}</strong><span key={you?.libraryCount} className="zoneNumber">{you?.libraryCount ?? 0}</span></span>
+        <small>{props.t("clickToDraw")}</small>
+      </button>
+      <div className="destinationPiles">
+        {(["graveyard", "exile"] as const).map(zone => {
+          const cards = props.room.publicZones[zone].filter(card => card.ownerId === props.room.youId);
+          const top = cards.at(-1);
+          const imageUrl = top ? getCardDisplayImage(top) : undefined;
+          return <DropArea key={zone} zoneId={zone} onMove={props.onMove} className={`destinationPile ${zone}Pile`}>
+            <button className="pileOpen" onClick={() => props.onOpen({ title: `${you?.name ?? props.t("you")} ${props.t(zone)}`, zone, playerId: props.room.youId })} aria-label={`${props.t(zone)} ${cards.length}`}>
+              <span className="pileArtwork" key={top?.id ?? "empty"}>{imageUrl ? <img src={imageUrl} alt={top?.name} /> : <span aria-hidden="true">{zone === "graveyard" ? "◇" : "✧"}</span>}</span>
+              <span className="pileLabel"><strong>{props.t(zone)}</strong><span className="zoneNumber">{cards.length}</span></span>
+              <small>{top?.name ?? props.t("dropCardHere")}</small>
+            </button>
+          </DropArea>;
+        })}
+      </div>
+      <p className="dockHint">{props.t("zoneDockHint")}</p>
+      {props.room.players.filter(player => player.id !== props.room.youId).map(player => <div key={player.id} className="publicPlayer">
+        <strong>{player.name}</strong>
+        <ZoneSummary t={props.t} title={props.t("graveyard")} cards={props.room.publicZones.graveyard.filter(card => card.ownerId === player.id)} onOpen={() => props.onOpen({title: `${player.name} ${props.t("graveyard")}`, zone: "graveyard", playerId: player.id})} />
+        <ZoneSummary t={props.t} title={props.t("exile")} cards={props.room.publicZones.exile.filter(card => card.ownerId === player.id)} onOpen={() => props.onOpen({title: `${player.name} ${props.t("exile")}`, zone: "exile", playerId: player.id})} />
+      </div>)}
     </section>
   );
 }
@@ -1337,9 +1352,12 @@ function DropArea(props: {
   className: string;
   children: React.ReactNode;
 }) {
+  const [dragOver, setDragOver] = useState(false);
   return (
     <section
-      className={props.className}
+      className={`${props.className} ${dragOver ? "dropReady" : ""}`}
+      onDragEnter={(event) => { event.preventDefault(); setDragOver(true); }}
+      onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragOver(false); }}
       onDragOver={(event) => {
         event.preventDefault();
         event.dataTransfer.dropEffect = "move";
@@ -1347,6 +1365,7 @@ function DropArea(props: {
       onDrop={(event) => {
         event.preventDefault();
         event.stopPropagation();
+        setDragOver(false);
         const cardId = getDraggedCard(event);
         if (cardId) props.onMove(cardId, props.zoneId, props.kind);
       }}
