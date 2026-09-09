@@ -11,16 +11,6 @@ export type CardKind = "land" | "creature" | "spell";
 export type LibraryPosition = "top" | "bottom" | "shuffle";
 export type CounterKind = "plusOne" | "generic";
 
-export type RulesTarget = { kind: "player" | "stack"; id: string };
-export type RulesAction =
-  | { action: "setMode"; mode: "manual" | "assisted" }
-  | { action: "playLand"; cardId: string }
-  | { action: "cast"; cardId: string; target?: RulesTarget }
-  | { action: "resolveTop" }
-  | { action: "endTurn" };
-export type SupportedCard = { name: string; kind: "land" | "creature" | "instant" | "sorcery"; cost: string; description: string; target?: "player" | "stack" };
-export type RulesView = { mode: "manual" | "assisted"; turnNumber: number; landsPlayed: Record<string, number>; supportedCards: SupportedCard[] };
-
 export type CardImageRecord = {
   name: string;
   imageUrl?: string;
@@ -92,12 +82,10 @@ export type ClientRoomView = {
   players: PlayerView[];
   publicZones: PublicZones;
   turn: TurnView;
-  rules: RulesView;
   log: string[];
 };
 
 export type ClientMessage =
-  | ({ type: "rulesAction" } & RulesAction)
   | { type: "createRoom"; playerId: string; playerName: string; deckText?: string; cardImages?: CardImageDatabase }
   | { type: "joinRoom"; roomCode: string; playerId: string; playerName: string; deckText?: string; cardImages?: CardImageDatabase }
   | { type: "reconnectRoom"; roomCode: string; playerId: string }

@@ -109,15 +109,36 @@ h2 { font-size: 14px; letter-spacing: .04em; color: #d4c19e; }
 .siteFooter { opacity: .65; }
 .quickActions { display: flex; flex-wrap: wrap; gap: 6px; }
 .quickActions button { flex: 1; padding: 7px; }
-.rulesPanel { border-bottom: 1px solid #c2a06c33; padding-bottom: 12px; }
-.rulesPanel label { display: grid; gap: 5px; font-size: 11px; color: #b3c2cd; margin: 8px 0; }
-.rulesPanel select { min-width: 0; font-size: 11px; }
-.rulesPanel .ruleButtons { display: grid; gap: 6px; }
-.rulesPanel .ruleStatus { color: #94d4c0; font-size: 11px; line-height: 1.6; }
-.rulesPanel details { margin-top: 10px; color: #aab7c2; font-size: 11px; line-height: 1.6; }
 @media (min-width: 1650px) { .battleBand .card { width: 88px; height: 117px; min-height: 117px; } .playmatSurface { min-height: 560px; } .handArea .card { width: 110px; height: 153px; min-height: 153px; } }
 @media (max-width: 1000px) { .app { padding: 0 12px 12px; } .table { grid-template-columns: minmax(0,1fr) 210px; } .playmatSurface { padding: 5px 8px; } .phaseCenter { grid-template-columns: 65px 1fr 75px 75px; } .phaseNav { font-size: 10px; padding: 5px; } .avatarSigil { display: none; } .arenaHud { gap: 10px; } .lobby { padding: 24px; } }
 @media (max-width: 760px) { .table { display: flex; flex-direction: column; } .board { width: 100%; } .table > .log { position: static; width: 100%; max-height: none; } .topbarActions { gap: 6px; } .topbar { gap: 8px; } .connection { font-size: 9px; } .lobbyGrid { display: flex; flex-direction: column; } .lobbyHero h2 { font-size: 24px; } .lobby { padding: 18px; margin: 15px auto; } .lobbyHero { align-items: start; gap: 12px; } .table.toolsOpen > .sidebar { left: 12px; width: min(315px,calc(100vw - 24px)); } .lifeOrb { width: 43px; height: 43px; font-size: 25px; } .duelistIdentity { min-width: 70px; } .activeTurnPill { display: none; } .handArea { padding: 0; grid-template-columns: minmax(0,1fr) 78px; } .topbar h1 { font-size: 18px; } .playmatSurface { min-height: 420px; } }
 @media (prefers-reduced-motion: reduce) { *,*::before,*::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; } }
 
 .log li { overflow-wrap: anywhere; }
+
+.selectionActions { border-bottom: 1px solid #c2a06c33; padding-bottom: 12px; }
+.selectedName { color: #c9dce4; font-size: 12px; overflow-wrap: anywhere; min-height: 32px; }
+.lifeAdjust { width: 30px; height: 32px; padding: 0; flex-shrink: 0; font-size: 20px; }
+.toolClose { position: sticky; top: 0; z-index: 1; }
+.handArea .cards { justify-content: safe center; }
+@media (min-width: 761px) and (max-height: 850px) {
+ .gameView .topbar { min-height: 48px; padding: 8px; }
+ .arenaHud { min-height: 50px; padding: 4px 12px; }
+ .lifeOrb { width: 42px; height: 42px; font-size: 25px; }
+ .playmatSurface { min-height: 350px; gap: 4px; padding: 4px 12px; }
+ .battleBand { min-height: 64px; padding-top: 15px; }
+ .battleBand .card { width: 62px; height: 82px; min-height: 82px; }
+ .battleBand.landBand .card { height: 52px; min-height: 52px; }
+ .handArea .zone { min-height: 135px; }
+ .handArea .cards { min-height: 115px; }
+ .handArea .card { width: 76px; height: 106px; min-height: 106px; }
+}
+@media (max-width: 760px) {
+ .phaseCenter { grid-template-columns: 1fr 1fr 1fr; }
+ .phaseCenter .phaseBadge { grid-row: 1; grid-column: 1 / -1; display: flex; justify-content: center; gap: 10px; }
+ .arenaHud { gap: 7px; padding: 7px 4px; }
+ .duelistIdentity { min-width: 45px; margin-left: 0; }
+ .zoneCount { min-width: 30px; }
+ .topbarActions button { white-space: nowrap; }
+ .selectionActions .buttonGrid { grid-template-columns: repeat(3,minmax(0,1fr)); }
+}

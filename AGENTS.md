@@ -2,7 +2,7 @@
 
 ## 项目定位
 
-MTG Tabletop 是面向朋友娱乐对局的双人网页牌桌，不是完整万智牌规则引擎。默认手动模式由玩家裁定；辅助模式仅对明确支持的牌处理费用、目标和结算，不实现完整优先权、战斗或状态动作。
+MTG Tabletop 是面向朋友娱乐对局的双人网页牌桌，不是完整万智牌规则引擎。费用、出地限制、目标和结算由玩家裁定，程序只同步手动操作。
 
 ## 技术与目录
 
@@ -39,10 +39,9 @@ pnpm start
 - 阶段提交信息使用简体中文，准确概括产出。
 - 不改写历史，不执行破坏性 Git 命令，不自动推送远端。
 
-## 辅助规则与视觉
+## 视觉与验证
 
-- `src/server/rules.ts` 是确定性白名单规则模块；未知牌和不支持的战场组合必须拒绝自动处理。
-- `tests/rules.test.ts` 检查规则状态变化和失败原子性；`tests/server.test.ts` 使用独立端口验证双客户端隐藏信息与结算。
-- `src/client/arena.css`、`ArenaHud.tsx`、`RulesPanel.tsx` 提供竞技场外观与辅助操作；原创背景位于 `public/art/arena-background.png`。
+- `src/client/arena.css`、`ArenaHud.tsx` 提供竞技场外观；原创背景位于 `public/art/arena-background.png`。
+- `tests/server.test.ts` 使用独立端口验证双客户端隐藏信息、手动移牌和生命操作。
 - 服务端端口可由 `PORT` 指定，默认 8787；开发前端仍连接 8787。
-- Python Oracle 编译器尚未接入，不得宣称可自动执行任意 Oracle 文本。
+- 不添加自动费用、出地限制、目标检查或堆叠效果结算；保留玩家自主裁定。
