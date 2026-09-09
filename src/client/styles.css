@@ -824,7 +824,7 @@ h2 {
   height: 100%;
   min-height: 100%;
   display: block;
-  object-fit: fill;
+  object-fit: contain;
   border-radius: 10px;
 }
 
@@ -890,12 +890,12 @@ h2 {
 }
 
 .card.tapped {
-  transform: rotate(calc(var(--base-rotation) + 90deg)) scale(0.88);
+  transform: rotate(calc(var(--base-rotation) + 90deg));
 }
 
 .attachedCard.tapped,
 .playmat .attachedCard.tapped {
-  transform: rotate(calc(var(--base-rotation) + 90deg)) scale(0.9);
+  transform: rotate(calc(var(--base-rotation) + 90deg));
   transform-origin: center center;
 }
 

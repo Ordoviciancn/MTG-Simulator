@@ -84,9 +84,7 @@ h2 { font-size: 14px; letter-spacing: .04em; color: #d4c19e; }
 .stackItem { min-width: 130px; font-size: 11px; padding: 4px 7px; }
 .stackActions { gap: 5px; margin-top: 5px; }
 .stackActions button { padding: 5px; font-size: 10px; }
-.battleBand .card { width: 74px; height: 99px; min-height: 99px; font-size: 10px; }
-.battleBand.landBand .card { height: 67px; min-height: 67px; overflow: hidden; }
-.battleBand.landBand .cardImage { object-fit: cover; object-position: center 20%; }
+.battleBand .card, .playmat .attachedCard { width: 92px; height: 128.8px; min-height: 128.8px; font-size: 12px; }
 .handArea { grid-template-columns: minmax(0,1fr) 110px; gap: 8px; align-items: center; padding: 0 18px; }
 .handArea .zone { min-height: 164px; padding: 8px; background: transparent; border: 0; }
 .handArea h2 { margin: 0 0 7px; font-size: 10px; color: #aebcc2; }
@@ -101,7 +99,7 @@ h2 { font-size: 14px; letter-spacing: .04em; color: #d4c19e; }
 .card.creature { background: linear-gradient(140deg,#454c38,#263938 55%,#13232b); }
 .card.spell { background: linear-gradient(140deg,#334d68,#223444 55%,#14212e); }
 .card.selected { outline: 2px solid #8bddf1; box-shadow: 0 0 18px #61c6e16b; }
-.card.tapped { transform: rotate(90deg) scale(.82); }
+.card.tapped, .playmat .attachedCard.tapped { transform: rotate(calc(var(--base-rotation) + 90deg)); transform-origin: center; }
 .castZone { min-height: 95px; border: 1px solid #d1ab645e; border-radius: 50% 50% 8px 8px; background: radial-gradient(ellipse at bottom,#9b652936,transparent),#121d27aa; }
 .castZone strong { color: #e1c086; font-size: 12px; }
 .castZone span { font-size: 9px; text-align: center; }
@@ -109,7 +107,7 @@ h2 { font-size: 14px; letter-spacing: .04em; color: #d4c19e; }
 .siteFooter { opacity: .65; }
 .quickActions { display: flex; flex-wrap: wrap; gap: 6px; }
 .quickActions button { flex: 1; padding: 7px; }
-@media (min-width: 1650px) { .battleBand .card { width: 88px; height: 117px; min-height: 117px; } .playmatSurface { min-height: 560px; } .handArea .card { width: 110px; height: 153px; min-height: 153px; } }
+@media (min-width: 1650px) { .playmatSurface { min-height: 560px; } .handArea .card { width: 110px; height: 153px; min-height: 153px; } }
 @media (max-width: 1000px) { .app { padding: 0 12px 12px; } .table { grid-template-columns: minmax(0,1fr) 210px; } .playmatSurface { padding: 5px 8px; } .phaseCenter { grid-template-columns: 65px 1fr 75px 75px; } .phaseNav { font-size: 10px; padding: 5px; } .avatarSigil { display: none; } .arenaHud { gap: 10px; } .lobby { padding: 24px; } }
 @media (max-width: 760px) { .table { display: flex; flex-direction: column; } .board { width: 100%; } .table > .log { position: static; width: 100%; max-height: none; } .topbarActions { gap: 6px; } .topbar { gap: 8px; } .connection { font-size: 9px; } .lobbyGrid { display: flex; flex-direction: column; } .lobbyHero h2 { font-size: 24px; } .lobby { padding: 18px; margin: 15px auto; } .lobbyHero { align-items: start; gap: 12px; } .table.toolsOpen > .sidebar { left: 12px; width: min(315px,calc(100vw - 24px)); } .lifeOrb { width: 43px; height: 43px; font-size: 25px; } .duelistIdentity { min-width: 70px; } .activeTurnPill { display: none; } .handArea { padding: 0; grid-template-columns: minmax(0,1fr) 78px; } .topbar h1 { font-size: 18px; } .playmatSurface { min-height: 420px; } }
 @media (prefers-reduced-motion: reduce) { *,*::before,*::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; } }
@@ -127,11 +125,8 @@ h2 { font-size: 14px; letter-spacing: .04em; color: #d4c19e; }
  .lifeOrb { width: 42px; height: 42px; font-size: 25px; }
  .playmatSurface { min-height: 350px; gap: 4px; padding: 4px 12px; }
  .battleBand { min-height: 64px; padding-top: 15px; }
- .battleBand .card { width: 62px; height: 82px; min-height: 82px; }
- .battleBand.landBand .card { height: 52px; min-height: 52px; }
  .handArea .zone { min-height: 135px; }
  .handArea .cards { min-height: 115px; }
- .handArea .card { width: 76px; height: 106px; min-height: 106px; }
 }
 @media (max-width: 760px) {
  .phaseCenter { grid-template-columns: 1fr 1fr 1fr; }
@@ -142,3 +137,7 @@ h2 { font-size: 14px; letter-spacing: .04em; color: #d4c19e; }
  .topbarActions button { white-space: nowrap; }
  .selectionActions .buttonGrid { grid-template-columns: repeat(3,minmax(0,1fr)); }
 }
+
+.battleBand .cards { gap: 24px; padding: 20px; }
+.playmat .attachedCard { transform: rotate(var(--base-rotation)); }
+.playmat .attachedCard.tapped { transform: rotate(calc(var(--base-rotation) + 90deg)); }
