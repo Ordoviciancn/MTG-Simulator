@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer, WebSocket } from "ws";
+import { applyRulesAction, createRulesState, rulesView, type RulesState } from "./rules";
 import type {
   Card,
   CardImageDatabase,
@@ -42,6 +43,7 @@ type PhaseSnapshot = {
 };
 
 type Room = {
+  rules: RulesState;
   roomCode: string;
   players: PlayerState[];
   publicZones: PublicZones;
@@ -145,6 +147,16 @@ function handleMessage(ws: WebSocket, message: ClientMessage) {
   if (!context) return send(ws, { type: "error", message: "请先创建或加入房间。" });
 
   const { room, player } = context;
+  if (message.type === "rulesAction") {
+    try { addLog(room, "规则辅助", applyRulesAction(room, player.id, message)); }
+    catch (error) { return send(ws, { type: "error", message: error instanceof Error ? error.message : "规则操作失败。" }); }
+    room.phaseHistory = [];
+    broadcast(room);
+    return;
+  }
+  if (room.rules.mode === "assisted" && !["leaveRoom", "chat", "rollDice", "reorderHand", "draw", "shuffleLibrary"].includes(message.type)) {
+    return send(ws, { type: "error", message: "规则辅助已开启；修改牌桌请先切换手动模式。 / Switch to manual mode to edit the table." });
+  }
   switch (message.type) {
     case "leaveRoom":
       room.clients.delete(ws);
@@ -252,6 +264,7 @@ function createRoom(playerId: string, playerName: string): Room {
   const roomCode = makeRoomCode();
   const player = createPlayer(playerId, playerName);
   const room: Room = {
+    rules: createRulesState(),
     roomCode,
     players: [player],
     publicZones: { battlefield: [], graveyard: [], exile: [], stack: [] },
@@ -402,6 +415,7 @@ function mulligan(room: Room, player: PlayerState) {
 }
 
 function resetGame(room: Room) {
+  room.rules = createRulesState();
   resetBoardForGame(room);
   addLog(room, "流程", "本局已重开：生命重置为 20，公共区域清空，牌库恢复为最近导入的牌表。");
 }
@@ -685,6 +699,8 @@ function undoPhase(room: Room, player: PlayerState) {
 function endTurn(room: Room, player: PlayerState) {
   const nextPlayer = getNextPlayer(room, player);
   if (!nextPlayer) return;
+  room.rules.turnNumber += 1;
+  room.rules.landsPlayed = {};
   room.phaseHistory.push({ activePlayerId: room.activePlayerId, phase: room.phase });
   room.activePlayerId = nextPlayer.id;
   untapPlayerPermanents(room, nextPlayer.id);
@@ -784,6 +800,7 @@ function createRoomView(room: Room, youId: string): ClientRoomView {
     players,
     publicZones: createPublicZonesView(room, youId),
     turn,
+    rules: rulesView(room.rules),
     log: room.log.slice(-100)
   };
 }
@@ -938,6 +955,7 @@ function libraryPositionName(position: LibraryPosition) {
   return names[position];
 }
 
-server.listen(8787, () => {
-  console.log("MTG Tabletop server listening on http://127.0.0.1:8787");
+const port = Number(process.env.PORT ?? 8787);
+server.listen(port, () => {
+  console.log(`MTG Tabletop server listening on http://127.0.0.1:${port}`);
 });

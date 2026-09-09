@@ -1,3 +1,5 @@
+import { ArenaHud } from "./ArenaHud";
+import { RulesPanel } from "./RulesPanel";
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { createTranslator, languageNames, translateLogEntry, translatePhase, translateServerMessage, type AppLanguage, type Translator } from "./i18n";
@@ -62,6 +64,7 @@ export function App() {
   const [tokenToughness, setTokenToughness] = useState(() => localStorage.getItem("mtg-token-toughness") ?? "1");
   const [tokenHasPT, setTokenHasPT] = useState(() => localStorage.getItem("mtg-token-has-pt") !== "false");
   const [showManual, setShowManual] = useState(false);
+  const [showTools, setShowTools] = useState(false);
   const [lifeDraft, setLifeDraft] = useState("20");
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -284,7 +287,7 @@ export function App() {
       setCardImageMessage(t("deckRequired"));
       return null;
     }
-    return ensureCardImagesForDeck();
+    return cardImages;
   }
 
   async function ensureCardImagesForDeck() {
@@ -319,16 +322,16 @@ export function App() {
 
   return (
     <ImagePreviewContext.Provider value={setImagePreview}>
-    <div className="app">
+    <div className={room ? "app gameView" : "app"}>
       <header className="topbar">
         <div>
           <div className="eyebrow">{t("appSubtitle")}</div>
           <h1>{t("appTitle")}</h1>
         </div>
-        <div className="connection">{room ? `${t("room")} ${room.roomCode}` : t("notSeated")}</div>
+        <div className="topbarActions">{room && <button className="secondary" aria-expanded={showTools} onClick={() => setShowTools(!showTools)}>{showTools ? t("closeTools") : t("tableTools")}</button>}<div className="connection">{room ? `${t("room")} ${room.roomCode}` : t("notSeated")}</div></div>
       </header>
 
-      {error && <div className="error">{error}</div>}
+      {error && <div role="alert" className="error">{error}</div>}
 
       {!room ? (
         <section className="panel lobby">
@@ -336,6 +339,7 @@ export function App() {
             <div>
               <div className="eyebrow">{t("lobbyEyebrow")}</div>
               <h2>{t("lobbyHeroTitle")}</h2>
+              <p className="heroCaption">{t("arenaCaption")}</p>
             </div>
             <button className="manualButton secondary" onClick={() => setShowManual(true)}>{t("viewManual")}</button>
           </div>
@@ -378,6 +382,7 @@ export function App() {
                 </div>
                 <span className={deckStats.total > 0 ? "statusPill ready" : "statusPill"}>{deckStats.total > 0 ? t("deckReady") : t("deckMissing")}</span>
               </div>
+              <button className="secondary" onClick={() => setDeckText("12 Island\n8 Mountain\n4 Forest\n4 Grizzly Bears\n4 Lightning Bolt\n4 Counterspell\n4 Divination")}>{t("practiceDeck")}</button>
               <textarea placeholder={defaultDeck} value={deckText} onChange={(event) => setDeckText(event.target.value)} />
               <div className="lobbyDeckActions">
                 <button className="secondary" disabled={isFetchingCardImages || deckStats.total === 0} onClick={ensureCardImagesForDeck}>{t("fetchScryfallImages")}</button>
@@ -393,7 +398,7 @@ export function App() {
           {showManual && <ManualModal t={t} onClose={() => setShowManual(false)} />}
         </section>
       ) : (
-        <main className="table">
+        <main className={`table ${showTools ? 'toolsOpen' : ''}`}>
           <aside className="panel sidebar">
             <section className="players">
               <PlayerCard t={t} name={you?.name ?? t("you")} life={you?.life ?? 20} library={you?.libraryCount ?? 0} hand={you?.handCount ?? 0} mulligans={you?.mulligans ?? 0} isYou />
@@ -410,8 +415,8 @@ export function App() {
                 <button disabled={!deckReady} onClick={() => send({ type: "mulligan" })}>{t("mulligan")}</button>
                 <button disabled={!deckReady} onClick={() => setShowLibrary(true)}>{t("searchLibrary")}</button>
                 <button onClick={() => setShowDice(true)}>{t("rollDice")}</button>
-                <button disabled={!selectedCardId} onClick={() => selectedCardId && send({ type: "toggleTap", cardId: selectedCardId })}>{t("tapUntap")}</button>
-                <button disabled={!selectedCardId} onClick={() => selectedCardId && send({ type: "toggleFaceDown", cardId: selectedCardId })}>{selectedCard?.faceDown ? t("turnFaceUp") : t("turnFaceDown")}</button>
+                <button disabled={!selectedCardId || room.rules.mode === "assisted"} onClick={() => selectedCardId && send({ type: "toggleTap", cardId: selectedCardId })}>{t("tapUntap")}</button>
+                <button disabled={!selectedCardId || room.rules.mode === "assisted"} onClick={() => selectedCardId && send({ type: "toggleFaceDown", cardId: selectedCardId })}>{selectedCard?.faceDown ? t("turnFaceUp") : t("turnFaceDown")}</button>
                 <button disabled={!selectedIsDoubleFaced} onClick={() => selectedCardId && send({ type: "toggleBackFace", cardId: selectedCardId })}>{selectedCard?.backFaceUp ? t("frontFace") : t("backFace")}</button>
               </div>
               <div className="buttonGrid lifeGrid">
@@ -471,21 +476,21 @@ export function App() {
               {showMoveActions && (
                 <>
                   <div className="buttonGrid">
-                    <button disabled={!selectedCardId} onClick={() => moveSelected("battlefield", "spell")}>{t("toNonLandBattlefield")}</button>
-                    <button disabled={!selectedCardId} onClick={() => moveSelected("battlefield", "land")}>{t("toLandArea")}</button>
-                    <button disabled={!selectedCardId} onClick={() => moveSelected("stack")}>{t("toStack")}</button>
+                    <button disabled={!selectedCardId || room.rules.mode === "assisted"} onClick={() => moveSelected("battlefield", "spell")}>{t("toNonLandBattlefield")}</button>
+                    <button disabled={!selectedCardId || room.rules.mode === "assisted"} onClick={() => moveSelected("battlefield", "land")}>{t("toLandArea")}</button>
+                    <button disabled={!selectedCardId || room.rules.mode === "assisted"} onClick={() => moveSelected("stack")}>{t("toStack")}</button>
                     <button disabled={!selectedIsBattlefield} onClick={() => selectedCardId && send({ type: "activateAbility", sourceCardId: selectedCardId })}>{t("abilityToStack")}</button>
                     <button disabled={!selectedIsToken} onClick={() => selectedCardId && send({ type: "removeToken", cardId: selectedCardId })}>{t("removeToken")}</button>
                     {(["graveyard", "exile", "hand"] as ZoneId[]).map((zone) => (
-                      <button key={zone} disabled={!selectedCardId} onClick={() => moveSelected(zone)}>
+                      <button key={zone} disabled={!selectedCardId || room.rules.mode === "assisted"} onClick={() => moveSelected(zone)}>
                         {t("toZone", { zone: zoneLabel(zone, t) })}
                       </button>
                     ))}
                   </div>
                   <div className="buttonGrid libraryMoveGrid">
-                    <button disabled={!selectedCardId} onClick={() => moveSelected("library", undefined, "top")}>{t("toLibraryTop")}</button>
-                    <button disabled={!selectedCardId} onClick={() => moveSelected("library", undefined, "bottom")}>{t("toLibraryBottom")}</button>
-                    <button disabled={!selectedCardId} onClick={() => moveSelected("library", undefined, "shuffle")}>{t("shuffleIntoLibrary")}</button>
+                    <button disabled={!selectedCardId || room.rules.mode === "assisted"} onClick={() => moveSelected("library", undefined, "top")}>{t("toLibraryTop")}</button>
+                    <button disabled={!selectedCardId || room.rules.mode === "assisted"} onClick={() => moveSelected("library", undefined, "bottom")}>{t("toLibraryBottom")}</button>
+                    <button disabled={!selectedCardId || room.rules.mode === "assisted"} onClick={() => moveSelected("library", undefined, "shuffle")}>{t("shuffleIntoLibrary")}</button>
                   </div>
                   <p className="hint">{selectedCard ? t("selectedCard", { name: selectedCard.name }) : t("selectCardHint")}</p>
                 </>
@@ -497,15 +502,15 @@ export function App() {
               <div className="counterPanel">
                 <div>
                   <span>{t("plusOne")}</span>
-                  <button disabled={!selectedCardId} onClick={() => adjustSelected("plusOne", -1)}>-</button>
-                  <button disabled={!selectedCardId} onClick={() => adjustSelected("plusOne", 1)}>+</button>
-                  <button disabled={!selectedCardId} onClick={() => clearSelectedCounter("plusOne")}>{t("clear")}</button>
+                  <button disabled={!selectedCardId || room.rules.mode === "assisted"} onClick={() => adjustSelected("plusOne", -1)}>-</button>
+                  <button disabled={!selectedCardId || room.rules.mode === "assisted"} onClick={() => adjustSelected("plusOne", 1)}>+</button>
+                  <button disabled={!selectedCardId || room.rules.mode === "assisted"} onClick={() => clearSelectedCounter("plusOne")}>{t("clear")}</button>
                 </div>
                 <div>
                   <span>{t("genericCounter")}</span>
-                  <button disabled={!selectedCardId} onClick={() => adjustSelected("generic", -1)}>-</button>
-                  <button disabled={!selectedCardId} onClick={() => adjustSelected("generic", 1)}>+</button>
-                  <button disabled={!selectedCardId} onClick={() => clearSelectedCounter("generic")}>{t("clear")}</button>
+                  <button disabled={!selectedCardId || room.rules.mode === "assisted"} onClick={() => adjustSelected("generic", -1)}>-</button>
+                  <button disabled={!selectedCardId || room.rules.mode === "assisted"} onClick={() => adjustSelected("generic", 1)}>+</button>
+                  <button disabled={!selectedCardId || room.rules.mode === "assisted"} onClick={() => clearSelectedCounter("generic")}>{t("clear")}</button>
                 </div>
               </div>
               <p className="hint">{t("counterHint")}</p>
@@ -565,6 +570,7 @@ export function App() {
               </section>
             ) : (
               <>
+                <ArenaHud player={opponent} active={room.turn.activePlayerId === opponent?.id} opponent t={t} />
                 <Battlefield
                   cards={room.publicZones.battlefield}
                   stack={room.publicZones.stack}
@@ -576,19 +582,23 @@ export function App() {
                   onProcessStackItem={(stackItemId) => send({ type: "processStackItem", stackItemId })}
                   turn={room.turn}
                   onStepPhase={(direction) => send({ type: "stepPhase", direction })}
-                  onEndTurn={() => send({ type: "endTurn" })}
+                  onEndTurn={() => send(room.rules?.mode === "assisted" ? { type: "rulesAction", action: "endTurn" } : { type: "endTurn" })}
+                  assisted={room.rules?.mode === "assisted"}
                   youId={room.youId}
                   youName={you?.name ?? t("you")}
                   opponentName={opponent?.name ?? t("opponent")}
                   t={t}
                 />
 
+                <ArenaHud player={you} active={room.turn.activePlayerId === you?.id} t={t} />
                 <HandArea t={t} cards={you?.hand ?? []} selectedCardId={selectedCardId} onSelect={setSelectedCardId} onMove={moveCard} onReorder={reorderHand} />
               </>
             )}
           </section>
 
           <aside className="panel log">
+            <RulesPanel room={room} selectedCardId={selectedCardId} send={send} t={t} />
+            <div className="quickActions"><button className="secondary" onClick={() => send({ type: "draw", count: 1 })}>{t("drawOne")}</button><button className="secondary" onClick={() => selectedCardId && send({ type: "toggleTap", cardId: selectedCardId })} disabled={!selectedCardId || room.rules.mode === "assisted"}>{t("tapUntap")}</button></div>
             <PublicInfo t={t} room={room} onOpen={setDetailModal} />
 
             <h2>{t("publicLogChat")}</h2>
@@ -824,6 +834,7 @@ function Battlefield(props: {
   onStepPhase: (direction: "previous" | "next") => void;
   onEndTurn: () => void;
   youId: string;
+  assisted?: boolean;
   youName: string;
   opponentName: string;
   t: Translator;
@@ -861,6 +872,7 @@ function Battlefield(props: {
             turn={props.turn}
             onStepPhase={props.onStepPhase}
             onEndTurn={props.onEndTurn}
+            assisted={props.assisted}
           />
         </div>
         <div className="playerSide yourSide">
@@ -926,6 +938,7 @@ function StackZone(props: {
 }
 
 function PhaseCenter(props: {
+  assisted?: boolean;
   t: Translator;
   turn: ClientRoomView["turn"];
   onStepPhase: (direction: "previous" | "next") => void;
@@ -933,12 +946,12 @@ function PhaseCenter(props: {
 }) {
   return (
     <section className="phaseCenter">
-      <button className="phaseNav previous" onClick={() => props.onStepPhase("previous")}>{props.t("previousPhase")}</button>
+      <button disabled={props.assisted} className="phaseNav previous" onClick={() => props.onStepPhase("previous")}>{props.t("previousPhase")}</button>
       <div className="phaseBadge">
         <span>{props.turn.activePlayerName}</span>
         <strong>{translatePhase(props.turn.phase, props.t)}</strong>
       </div>
-      <button className="phaseNav next" onClick={() => props.onStepPhase("next")}>{props.t("nextPhase")}</button>
+      <button disabled={props.assisted} className="phaseNav next" onClick={() => props.onStepPhase("next")}>{props.t("nextPhase")}</button>
       <button className="phaseNav end danger" onClick={props.onEndTurn}>{props.t("endTurn")}</button>
     </section>
   );

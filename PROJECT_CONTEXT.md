@@ -12,9 +12,9 @@ MTG Tabletop 是一个面向朋友娱乐对局的《万智牌》双人网页牌�
 
 核心原则：
 
-- 不自动判断费用、优先权、合法目标、状态动作或复杂裁定。
-- 玩家自行判断规则合法性。
-- 工具只负责“牌桌状态同步”和“让常见实体操作更顺手”。
+- 默认手动模式不裁定规则；辅助模式由服务端白名单模块处理基本地费用、有限目标与堆叠结算。
+- 优先权、战斗、状态动作和复杂裁定仍由玩家负责。
+- 辅助规则边界与测试见 `src/server/rules.ts`、`tests/` 和 README；尚未接入 Python Oracle 编译器。
 
 ---
 
@@ -25,7 +25,7 @@ MTG Tabletop 是一个面向朋友娱乐对局的《万智牌》双人网页牌�
 | 前端 | React + Vite + TypeScript |
 | 服务端 | Express + WebSocket `ws` |
 | 数据同步 | 单房间内通过 WebSocket 广播完整房间视图 |
-| 卡图 | 前端入房前调用 Scryfall，服务端把图片字段写入牌对象 |
+| 卡图 | 前端入房前可选调用 Scryfall，服务端把图片字段写入牌对象 |
 | 远程联机 | 本地服务 + Cloudflare Quick Tunnel |
 | 桌面启动 | Windows `.cmd` / PowerShell 脚本，不是 Electron App |
 
