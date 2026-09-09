@@ -46,3 +46,5 @@ pnpm start
 - 服务端端口可由 `PORT` 指定，默认 8787；开发前端仍连接 8787。
 - 手动房间保持玩家裁定；新增自动房间以 Forge 为权威状态源，不重建简化白名单规则引擎。
 - Forge 方案与状态见 `docs/Forge接入与三维客户端方案.md`；未完成真实引擎集成测试前不得宣称已接入。
+
+- Forge 核心构建使用 `scripts/构建Forge核心.ps1 -JdkHome <JDK目录>`；通过 reactor 执行 forge-game 及依赖的测试和打包。源码、Maven、依赖缓存和产物均留在忽略目录 `.local-tools/`。

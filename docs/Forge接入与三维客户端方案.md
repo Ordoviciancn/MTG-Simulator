@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-目前只完成源码接口核对、版本记录和环境检查脚本，尚未编译或接通 Forge；现有房间仍运行手动牌桌。参考视频未能读取，以下动画为待验证的设计，不是逐帧复刻结果。
+Forge 固定版本的父工程、forge-core 和 forge-game 已在本机编译通过，上游自带的 3 项测试通过；尚未接通网页或启动可交互对局，现有房间仍运行手动牌桌。参考视频未能读取，以下动画为待验证的设计，不是逐帧复刻结果。
 
 上游：https://github.com/Card-Forge/forge 。本次核对 HEAD 为 `c86308451651af63c1b4a69a2c47f9cd478d53f6`，记录于 `config/forge-source.json`。构建要求来自上游 pom.xml：Java 17，Maven >= 3.8.1。Forge 仓库标注 GPL-3.0；引入、修改与分发上游代码须保留许可证及对应源码安排，不因独立进程就假定免除义务。
 
@@ -48,3 +48,15 @@ Forge 独立 Java 进程拥有自动房间的全部规则状态；Node 服务管
 - https://github.com/Card-Forge/forge/blob/master/forge-game/src/main/java/forge/game/Game.java
 - https://threejs.org/
 - https://docs.unity3d.com/Manual/urp/urp-introduction.html
+
+## 本机构建
+
+已验证 Temurin 17.0.20.1 与 Maven 3.9.16。源码位于 `.local-tools/forge`，Maven 与依赖缓存同样放在 `.local-tools`，不提交到版本控制。源码检出需包含父工程声明的子模块目录，但实际构建仅选择 forge-game 及其依赖。
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/构建Forge核心.ps1 -JdkHome "D:/Program Files/JDK"
+```
+
+脚本核对固定 Git 提交，通过 Maven reactor 构建并运行测试；只在脚本执行期间设置 JAVA_HOME，不修改系统环境。可用 `-MavenPath` 和 `-ForgePath` 覆盖默认位置。代理使用调用环境的 MAVEN_OPTS，不在脚本内固定代理服务器。
+
+构建结果：Forge Parent / Core / Game 全部 SUCCESS；forge-game 测试 3 项，无失败、错误或跳过。产物为各模块 target 内的 JAR，不能当作已经提供网页对局服务的独立程序。下一阶段仍需初始化卡牌资源、实现玩家选择适配器、按玩家脱敏的快照与事件桥接。
