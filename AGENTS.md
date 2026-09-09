@@ -44,4 +44,5 @@ pnpm start
 - `src/client/arena.css`、`ArenaHud.tsx` 提供竞技场外观；原创背景位于 `public/art/arena-background.png`。
 - `tests/server.test.ts` 使用独立端口验证双客户端隐藏信息、手动移牌和生命操作。
 - 服务端端口可由 `PORT` 指定，默认 8787；开发前端仍连接 8787。
-- 不添加自动费用、出地限制、目标检查或堆叠效果结算；保留玩家自主裁定。
+- 手动房间保持玩家裁定；新增自动房间以 Forge 为权威状态源，不重建简化白名单规则引擎。
+- Forge 方案与状态见 `docs/Forge接入与三维客户端方案.md`；未完成真实引擎集成测试前不得宣称已接入。
