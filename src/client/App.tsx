@@ -1,7 +1,8 @@
 import { ArenaEffects } from "./ArenaEffects";
+import { createPortal } from "react-dom";
 import { useRoomEffects } from "./useRoomEffects";
 import { ArenaHud } from "./ArenaHud";
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { createTranslator, languageNames, translateLogEntry, translatePhase, translateServerMessage, type AppLanguage, type Translator } from "./i18n";
 import type { Card, CardImageDatabase, CardImageRecord, CardKind, ClientMessage, ClientRoomView, LibraryPosition, PublicZoneId, ServerMessage, ZoneId } from "../shared/types";
@@ -1396,6 +1397,45 @@ function Cards(props: {
   youId?: string;
 }) {
   const openImagePreview = useContext(ImagePreviewContext);
+  const [handPreview, setHandPreview] = useState<{ id: string; x: number; y: number; width: number } | null>(null);
+  const isHand = !!props.onReorder;
+  const handContainer = useRef<HTMLDivElement>(null);
+  const handPositions = useRef(new Map<string, { x: number; y: number }>());
+  const handAnimations = useRef(new Map<string, Animation>());
+  useLayoutEffect(() => {
+    if (!isHand || !handContainer.current) return;
+    const next = new Map<string, { x: number; y: number }>();
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    for (const group of handContainer.current.children) {
+      if (!(group instanceof HTMLElement)) continue;
+      const id = group.querySelector<HTMLElement>('[data-card-id]')?.dataset.cardId;
+      if (!id) continue;
+      const point = { x: group.offsetLeft, y: group.offsetTop };
+      const previous = handPositions.current.get(id);
+      next.set(id, point);
+      if (reduced) handAnimations.current.get(id)?.cancel();
+      if (!reduced && previous && (previous.x !== point.x || previous.y !== point.y)) {
+        handAnimations.current.get(id)?.cancel();
+        handAnimations.current.set(id, group.animate([{ translate: `${previous.x - point.x}px ${previous.y - point.y}px` }, { translate: '0px 0px' }], {duration:220,easing:'cubic-bezier(.2,.8,.2,1)'}));
+      }
+    }
+    for (const [id, animation] of handAnimations.current) if (!next.has(id)) { animation.cancel(); handAnimations.current.delete(id); }
+    handPositions.current = next;
+  }, [props.cards, isHand]);
+  useEffect(() => () => { for (const animation of handAnimations.current.values()) animation.cancel(); }, []);
+  useEffect(() => {
+    const clear = () => setHandPreview(null);
+    window.addEventListener('scroll', clear, true);
+    window.addEventListener('resize', clear);
+    return () => { window.removeEventListener('scroll', clear, true); window.removeEventListener('resize', clear); };
+  }, []);
+  const previewCard = props.cards.find(card => card.id === handPreview?.id);
+  function previewHand(card: Card, element: HTMLElement) {
+    if (!isHand) return;
+    const rect = element.getBoundingClientRect();
+    const width = Math.min(230, window.innerWidth - 24, (window.innerHeight - 32) / 1.4);
+    setHandPreview({ id: card.id, width, x: Math.max(12, Math.min(window.innerWidth - width - 12, rect.x + rect.width / 2 - width / 2)), y: Math.max(12, Math.min(window.innerHeight - width * 1.4 - 12, rect.bottom - width * 1.4 - 28)) });
+  }
   const rightPressRef = useRef<{ timer: number; fired: boolean; cardId: string } | null>(null);
   const allCards = props.allCards ?? props.cards;
   const attachmentsByParent = new Map<string, Card[]>();
@@ -1420,17 +1460,23 @@ function Cards(props: {
       attachments.length ? "hasAttachments" : ""
     ].join(" ");
     return (
-      <div key={card.id} className={groupClassName} style={{ "--attachment-index": attachmentIndex } as CSSProperties}>
+      <div key={card.id} className={groupClassName} style={{ "--attachment-index": attachmentIndex, ...(isHand ? { '--fan-angle': `${(props.cards.indexOf(card) - (props.cards.length - 1) / 2) * Math.min(3, 24 / Math.max(1, props.cards.length - 1))}deg` } : {}) } as CSSProperties}>
         <button
           data-card-id={card.id}
           draggable
-          onDragStart={(event) => setDraggedCard(event, card.id)}
+          onDragStart={(event) => { setHandPreview(null); setDraggedCard(event, card.id); }}
+          onDragEnd={() => setHandPreview(null)}
+          onPointerEnter={(event) => { if (event.pointerType === 'mouse') previewHand(card, event.currentTarget); }}
+          onFocus={(event) => previewHand(card, event.currentTarget)}
+          onBlur={() => setHandPreview(null)}
+          onKeyDown={(event) => { if (event.key === 'Escape') { setHandPreview(null); event.currentTarget.blur(); } }}
           onDragOver={(event) => {
             if (!props.onAttach && !props.onReorder) return;
             event.preventDefault();
             event.dataTransfer.dropEffect = "move";
           }}
           onDrop={(event) => {
+            setHandPreview(null);
             if (!props.onAttach && !props.onReorder) return;
             event.preventDefault();
             event.stopPropagation();
@@ -1465,6 +1511,7 @@ function Cards(props: {
             window.clearTimeout(press.timer);
           }}
           onMouseLeave={() => {
+            setHandPreview(null);
             const press = rightPressRef.current;
             if (!press) return;
             window.clearTimeout(press.timer);
@@ -1512,8 +1559,11 @@ function Cards(props: {
   }
 
   return (
-    <div className="cards">
+    <div className="cards" ref={handContainer}>
       {props.cards.map((card) => renderCard(card))}
+      {isHand && handPreview && previewCard && createPortal(<div className="handHoverPreview" aria-hidden="true" style={{left:handPreview.x,top:handPreview.y,width:handPreview.width}}>
+        {getCardHighresImage(previewCard) ? <img src={getCardHighresImage(previewCard)} alt="" draggable={false}/> : <span>{previewCard.faceDown ? props.t('cardBack') : previewCard.name}</span>}
+      </div>, document.body)}
     </div>
   );
 }

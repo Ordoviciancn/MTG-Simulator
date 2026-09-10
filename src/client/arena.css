@@ -243,14 +243,12 @@ body::before { background: #1a151ba8; }
 .handArea h2 { color: #fff0d3; font-size: 9px; text-shadow: 0 1px 3px #251829; padding-left: 15px; }
 .handArea .cards { min-height: 162px; gap: 0; padding: 17px 22px 8px; align-items: end; justify-content: safe center; overflow-x: auto; overflow-y: hidden; }
 .handArea .cardGroup { margin-left: -17px; transform: rotate(var(--fan-angle,0deg)); transform-origin: 50% 160%; transition: transform .22s,margin .22s; }
-.handArea .cardGroup:nth-child(1) { --fan-angle: -5deg; }
-.handArea .cardGroup:nth-child(2) { --fan-angle: -3deg; }
-.handArea .cardGroup:nth-child(3) { --fan-angle: -1deg; }
-.handArea .cardGroup:nth-child(5) { --fan-angle: 2deg; }
-.handArea .cardGroup:nth-child(6) { --fan-angle: 4deg; }
-.handArea .cardGroup:nth-child(n+7) { --fan-angle: 5deg; }
 .handArea .cardGroup:first-child { margin-left: 0; }
-.handArea .cardGroup:hover,.handArea .cardGroup:focus-within { transform: translateY(-9px) rotate(0deg); margin-right: 17px; z-index: 10; }
+.handArea .cardGroup:hover,.handArea .cardGroup:focus-within { transform: translateY(-9px) rotate(0deg); z-index: 10; }
+.handHoverPreview { position: fixed; aspect-ratio: 5 / 7; pointer-events: none; z-index: 95; border-radius: 12px; background: #28232a; outline: 2px solid #efd18a; box-shadow: 0 0 0 4px #725931,0 14px 32px #000a,0 0 28px #ffdc8d66; animation: handPreviewRise 150ms cubic-bezier(.2,.8,.2,1) both; transform-origin: center bottom; }
+.handHoverPreview img { display: block; width: 100%; height: 100%; object-fit: contain; border-radius: inherit; }
+.handHoverPreview span { display: block; padding: 20px; color: #fff1cf; }
+@keyframes handPreviewRise { from { opacity: 0; transform: translateY(20px) scale(.88); } to { opacity: 1; transform: translateY(0) scale(1); } }
 .handArea .card { width: 100px; height: 140px; min-height: 140px; }
 .handArea .card:hover,.handArea .card:focus-visible { transform: none; box-shadow: 0 0 0 2px #fae2a2,0 0 20px #ffdf9b77; }
 .castZone { min-height: 86px; border-radius: 50%; border: 1px solid #ffe4a08c; background: radial-gradient(ellipse,#c894454a,#503a287a); box-shadow: inset 0 0 0 4px #f0d59a1a; }
