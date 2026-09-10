@@ -41,7 +41,8 @@ pnpm start
 
 ## 视觉与验证
 
-- `src/client/arena.css`、`ArenaHud.tsx` 提供竞技场外观；原创背景位于 `public/art/arena-background.png`。
+- `src/client/arena.css`、`ArenaHud.tsx` 提供竞技场外观；纸雕场景背景位于 `public/art/storybook-arena.png`。
+- `roomEffects.ts` 从可见房间快照生成视觉事件，`useRoomEffects.ts` 管理独立到期的动画队列；动画不得修改规则状态或推断敌方私密牌名。录屏交互依据见 `docs/录屏交互观察.md`。
 - `tests/server.test.ts` 使用独立端口验证双客户端隐藏信息、手动移牌和生命操作。
 - 服务端端口可由 `PORT` 指定，默认 8787；开发前端仍连接 8787。
 - 手动房间保持玩家裁定；新增自动房间以 Forge 为权威状态源，不重建简化白名单规则引擎。

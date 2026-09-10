@@ -1,3 +1,5 @@
+import { ArenaEffects } from "./ArenaEffects";
+import { useRoomEffects } from "./useRoomEffects";
 import { ArenaHud } from "./ArenaHud";
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
@@ -106,6 +108,8 @@ export function App() {
     ws.onclose = () => setError(createTranslator(appLanguage)("connectionClosed"));
     return () => ws.close();
   }, [appLanguage, playerId]);
+
+  const arenaEffects = useRoomEffects(room);
 
   const you = useMemo(() => room?.players.find((player) => player.id === room.youId), [room]);
   const opponent = useMemo(() => room?.players.find((player) => player.id !== room.youId), [room]);
@@ -329,6 +333,7 @@ export function App() {
 
   return (
     <ImagePreviewContext.Provider value={setImagePreview}>
+    <ArenaEffects effects={arenaEffects} />
     <div className={room ? "app gameView" : "app"}>
       <header className="topbar">
         <div>
@@ -925,6 +930,7 @@ function StackZone(props: {
         {props.stack.slice().reverse().map((card, index) => (
           <button
             key={card.id}
+            data-card-id={card.id}
             draggable
             onDragStart={(event) => setDraggedCard(event, card.id)}
             className={["stackItem", props.selectedCardId === card.id ? "selected" : ""].join(" ")}
@@ -996,7 +1002,7 @@ function PublicInfo(props: { t: Translator; room: ClientRoomView; onOpen: (modal
   return (
     <section className="publicInfo zoneDock">
       <h2>{props.t("publicZones")}</h2>
-      <button className="libraryPile" disabled={!you?.libraryCount} onClick={props.onDraw} aria-label={`${props.t("drawOne")} · ${props.t("library")} ${you?.libraryCount ?? 0}`}>
+      <button data-zone="library" className="libraryPile" disabled={!you?.libraryCount} onClick={props.onDraw} aria-label={`${props.t("drawOne")} · ${props.t("library")} ${you?.libraryCount ?? 0}`}>
         <span className="deckVisual" aria-hidden="true"><img src="/mtg-card-back.png" alt="" /><span key={you?.libraryCount} className="deckPulse" /></span>
         <span className="pileLabel"><strong>{props.t("library")}</strong><span key={you?.libraryCount} className="zoneNumber">{you?.libraryCount ?? 0}</span></span>
         <small>{props.t("clickToDraw")}</small>
@@ -1355,6 +1361,7 @@ function DropArea(props: {
   const [dragOver, setDragOver] = useState(false);
   return (
     <section
+      data-zone={props.zoneId}
       className={`${props.className} ${dragOver ? "dropReady" : ""}`}
       onDragEnter={(event) => { event.preventDefault(); setDragOver(true); }}
       onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragOver(false); }}
@@ -1415,6 +1422,7 @@ function Cards(props: {
     return (
       <div key={card.id} className={groupClassName} style={{ "--attachment-index": attachmentIndex } as CSSProperties}>
         <button
+          data-card-id={card.id}
           draggable
           onDragStart={(event) => setDraggedCard(event, card.id)}
           onDragOver={(event) => {
