@@ -56,3 +56,7 @@ pnpm start
 - `pnpm forge:probe` 需要 JAVA_HOME 和已构建的 Forge，验证 Node/Java 进程及最小 Game 状态，不等同于完整对局或网页接入；相关变更需运行该验证。
 - `pnpm forge:human-smoke` 需要 JAVA_HOME 和 forge-gui 构建，验证双 Human Match 到达选择窗口与双座位视图；输出 `fullGameVerified:false`，不能作为完整对局验收。Java 用户目录与 APPDATA/LOCALAPPDATA 必须隔离到会话目录，退出后等待进程关闭再清理。
 - `pnpm forge:human-smoke --opening` 验证起手及出地；`--spell` 使用隔离测试种子验证闪电击目标、自动支付和伤害结算。测试种子禁止通过网络协议设置。
+- 新 Forge 客户端入口为 `/?forge`，WebSocket 路径为 `/forge`；入口由 `ArenaClient.tsx`、`forgeRooms.ts`、`arenaProtocol.ts` 组成。旧根页面仅为迁移基线，不能把旧手动按钮接入 Forge 房间。
+- `pnpm forge:network-smoke` 使用临时本机端口、真实 Java 引擎和独立网络座位验证施法、身份、回执与重连；`--complete` 继续伤害对局直至 Forge 宣布终局。该测试不是所有机制覆盖证明。
+- Forge 房间凭据由服务端随机生成，浏览器按标签页保存；客户端自报 playerId 不能代替座位凭据。外部卡牌引用按观察者分配，离开可见区域后失效。
+- 新客户端动画入口为 `SemanticCanvas.tsx`，只消费 Forge 语义事件。当前 Java 崩溃时冻结房间，不声称可恢复崩溃前引擎状态。

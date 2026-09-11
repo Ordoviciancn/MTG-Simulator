@@ -4,6 +4,8 @@ import forge.game.*;
 import forge.game.card.*;
 import forge.game.player.*;
 import forge.game.zone.ZoneType;
+import forge.game.event.*;
+import com.google.common.eventbus.Subscribe;
 import forge.gui.GuiBase;
 import forge.gui.interfaces.*;
 import forge.localinstance.properties.ForgePreferences.FPref;
@@ -20,6 +22,7 @@ import java.util.concurrent.atomic.AtomicLong;
 public final class ForgeHumanBridge {
     static final Gson JSON = new Gson();
     static final AtomicLong IDS = new AtomicLong();
+    static final AtomicLong EVENTS = new AtomicLong();
     static final ExecutorService UI = Executors.newSingleThreadExecutor(r -> new Thread(r, "Bridge UI"));
     static final Seat[] SEATS = new Seat[2];
     static Game game;
@@ -50,22 +53,27 @@ public final class ForgeHumanBridge {
         final PlayerControllerHuman controller;
         volatile String requestId;
         volatile CompletableFuture<JsonElement> pending;
+        int choiceMin,choiceMax,choiceSize;
         String message="";
         boolean okEnabled,cancelEnabled;
         String okLabel="OK",cancelLabel="Cancel";
         Object inputIdentity;
+        final Set<Integer> actionable=ConcurrentHashMap.newKeySet();
         Seat(int index,Player player) { this.index=index;this.player=player;controller=(PlayerControllerHuman)player.getController(); }
         void input() {
             UI.execute(this::publishInput);
         }
         void publishInput() {
+            if(pending!=null)return;
             Object current=controller.getInputProxy().getInput();
+            if(current==null || current.getClass().getSimpleName().equals("InputLockUI"))return;
             if(requestId==null || current!=inputIdentity) { requestId=Long.toString(IDS.incrementAndGet());inputIdentity=current; }
             states();
             emit(obj("type","prompt","seat",index,"requestId",requestId,"kind","input","inputType",current==null?"":current.getClass().getSimpleName(),"message",message,"okEnabled",okEnabled,"cancelEnabled",cancelEnabled,"okLabel",okLabel,"cancelLabel",cancelLabel));
         }
         JsonElement choose(String message,List<?> choices,int min,int max) throws Exception {
-            CompletableFuture<JsonElement> future=new CompletableFuture<>(); pending=future;
+            CompletableFuture<JsonElement> future=new CompletableFuture<>();
+            choiceMin=min;choiceMax=max;choiceSize=choices.size();pending=future;
             requestId=Long.toString(IDS.incrementAndGet());
             List<Object> options=new ArrayList<>();
             for(int i=0;i<choices.size();i++) options.add(obj("value",i,"label",String.valueOf(choices.get(i))));
@@ -78,7 +86,7 @@ public final class ForgeHumanBridge {
             List<JsonElement> indices=new ArrayList<>();
             if(answer.isJsonArray()) answer.getAsJsonArray().forEach(indices::add); else indices.add(answer);
             Set<Integer> unique=new LinkedHashSet<>();
-            for(JsonElement i:indices) { int value=i.getAsInt(); if(value<0||value>=choices.size()) throw new IllegalArgumentException("Choice out of range"); unique.add(value); }
+            for(JsonElement i:indices) { int value=i.getAsInt(); if(value<0||value>=choices.size()||!unique.add(value)) throw new IllegalArgumentException("Invalid choice index"); }
             if(unique.size()<min||unique.size()>max) throw new IllegalArgumentException("Invalid selection count");
             List<Object> result=new ArrayList<>(); for(int i:unique) result.add(choices.get(i)); return result;
         }
@@ -93,9 +101,11 @@ public final class ForgeHumanBridge {
                 case "getGameSpeed": return forge.gui.control.PlaybackSpeed.NORMAL;
                 case "getDayTime": return "";
                 case "getGamestate": return null;
+                case "setWeaklySelectable": actionable.clear();for(Object c:(Iterable<?>)a[0])actionable.add(((CardView)c).getId());return null;
+                case "clearWeaklySelectable": actionable.clear();return null;
                 case "showPromptMessage": message=String.valueOf(a[1]); input(); return null;
                 case "updateButtons": okLabel=(String)a[1];cancelLabel=(String)a[2];okEnabled=(boolean)a[3];cancelEnabled=(boolean)a[4];input();return null;
-                case "getAbilityToPlay": return chooseList("Choose ability",(List<?>)a[1],1,1).get(0);
+                case "getAbilityToPlay": {List<?> abilities=(List<?>)a[1];return abilities.size()==1?abilities.get(0):chooseList("Choose ability",abilities,1,1).get(0);}
                 case "one": case "oneOrNone": { List<?> picked=chooseList((String)a[0],(List<?>)a[1],n.equals("one")?1:0,1); return picked.isEmpty()?null:picked.get(0); }
                 case "getChoices": return chooseList((String)a[0],(List<?>)a[3],(int)a[1],(int)a[2]);
                 case "many": return chooseList((String)a[0]+" "+a[1],(List<?>)a[4],(int)a[2],(int)a[3]);
@@ -115,8 +125,43 @@ public final class ForgeHumanBridge {
             throw new UnsupportedOperationException("Forge callback: "+method);
         }
     }
+    static final class SemanticEvents {
+        @Subscribe public void receive(GameEvent event) {
+            String kind;
+            if(event instanceof GameEventPlayerLivesChanged)kind="life";
+            else if(event instanceof GameEventCardChangeZone)kind="zone";
+            else if(event instanceof GameEventCardTapped)kind="tap";
+            else if(event instanceof GameEventTurnPhase)kind="phase";
+            else if(event instanceof GameEventSpellAbilityCast)kind="cast";
+            else if(event instanceof GameEventSpellResolved)kind="resolve";
+            else if(event instanceof GameEventGameFinished)kind="finished";
+            else return;
+            long sequence=EVENTS.incrementAndGet();
+            for(Seat seat:SEATS) {
+                if(seat==null)continue;
+                Map<String,Object> data=obj();
+                CardView card=null;
+                if(event instanceof GameEventPlayerLivesChanged e)data=obj("playerId",e.player().getId(),"before",e.oldLives(),"after",e.newLives());
+                if(event instanceof GameEventTurnPhase e)data=obj("playerId",e.playerTurn().getId(),"phase",String.valueOf(e.phase()));
+                if(event instanceof GameEventCardTapped e){card=e.card();data.put("tapped",e.tapped());}
+                if(event instanceof GameEventCardChangeZone e){
+                    data.put("from",e.from()==null?null:String.valueOf(e.from().zoneType()));
+                    data.put("to",e.to()==null?null:String.valueOf(e.to().zoneType()));
+                    data.put("playerId",e.card().getOwner().getId());
+                    card=e.card();
+                }
+                if(event instanceof GameEventSpellAbilityCast e){card=e.sa().getHostCard();data.put("stackId",e.si().getId());data.put("playerId",e.si().getActivatingPlayer().getId());}
+                if(event instanceof GameEventSpellResolved e){card=e.spell().getHostCard();data.put("fizzled",e.hasFizzled());}
+                if(card!=null && card.canBeShownTo(seat.player.getView()) && (!card.isFaceDown() || card.mayPlayerLook(seat.player.getView()))) {
+                    data.put("cardId",card.getId());data.put("name",card.getCurrentState().getName());
+                }
+                emit(obj("type","semantic","seat",seat.index,"sequence",sequence,"kind",kind,"data",data));
+            }
+        }
+    }
     static Map<String,Object> card(Card c,Player viewer) {
-        Map<String,Object> out=obj("id",c.getId(),"ownerId",c.getOwner().getId(),"tapped",c.isTapped());
+        Map<String,Object> out=obj("id",c.getId(),"ownerId",c.getOwner().getId(),"controllerId",c.getController().getId(),"tapped",c.isTapped());
+        for(Seat seat:SEATS)if(seat!=null && seat.player==viewer)out.put("actionable",seat.actionable.contains(c.getId()));
         if(!c.getView().canBeShownTo(viewer.getView()) || (c.isFaceDown() && !c.getView().mayPlayerLook(viewer.getView()))) { out.put("name","Face-down card");out.put("kind","spell");return out; }
         out.put("name",c.getName());out.put("kind",c.isLand()?"land":c.isCreature()?"creature":"spell");
         if(c.isCreature()){out.put("power",c.getNetPower());out.put("toughness",c.getNetToughness());} return out;
@@ -124,9 +169,9 @@ public final class ForgeHumanBridge {
     static List<Object> zone(Player owner,ZoneType zone,Player viewer) { List<Object> result=new ArrayList<>();for(Card c:owner.getCardsIn(zone)) result.add(card(c,viewer));return result; }
     static void states() {
         if(game==null)return;
-        for(Seat seat:SEATS) {if(seat==null)continue; List<Object> players=new ArrayList<>();for(Player p:game.getPlayers())players.add(obj("id",p.getId(),"name",p.getName(),"life",p.getLife(),"libraryCount",p.getCardsIn(ZoneType.Library).size(),"handCount",p.getCardsIn(ZoneType.Hand).size(),"hand",p==seat.player?zone(p,ZoneType.Hand,seat.player):List.of(),"battlefield",zone(p,ZoneType.Battlefield,seat.player),"graveyard",zone(p,ZoneType.Graveyard,seat.player),"exile",zone(p,ZoneType.Exile,seat.player)));
-            List<Object> stack=new ArrayList<>();for(Card c:game.getCardsIn(ZoneType.Stack))stack.add(card(c,seat.player));
-            Player active=game.getPhaseHandler().getPlayerTurn();emit(obj("type","state","seat",seat.index,"players",players,"stack",stack,"phase",String.valueOf(game.getPhaseHandler().getPhase()),"activePlayerId",active==null?null:active.getId(),"gameOver",game.isGameOver())); }
+        for(Seat seat:SEATS) {if(seat==null)continue; List<Object> players=new ArrayList<>();for(Player p:game.getRegisteredPlayers())players.add(obj("id",p.getId(),"name",p.getName(),"life",p.getLife(),"libraryCount",p.getCardsIn(ZoneType.Library).size(),"handCount",p.getCardsIn(ZoneType.Hand).size(),"hand",p==seat.player?zone(p,ZoneType.Hand,seat.player):List.of(),"battlefield",zone(p,ZoneType.Battlefield,seat.player),"graveyard",zone(p,ZoneType.Graveyard,seat.player),"exile",zone(p,ZoneType.Exile,seat.player)));
+            List<Object> stack=new ArrayList<>();for(var item:game.getStack()) {Map<String,Object> projected=card(item.getSourceCard(),seat.player);projected.put("stackId",item.getId());projected.put("ability",item.getSpellAbility().isAbility());stack.add(projected);}
+            Player active=game.getPhaseHandler().getPlayerTurn();emit(obj("type","state","seat",seat.index,"players",players,"stack",stack,"lastEventSequence",EVENTS.get(),"phase",String.valueOf(game.getPhaseHandler().getPhase()),"activePlayerId",active==null?null:active.getId(),"gameOver",game.isGameOver())); }
     }
     static void init(JsonObject input) {
         try {
@@ -138,7 +183,8 @@ public final class ForgeHumanBridge {
                 players.add(new RegisteredPlayer(deck).setPlayer(new LobbyPlayerHuman(p.get("name").getAsString()))); }
             if(players.size()!=2)throw new IllegalArgumentException("Exactly two players required");
             Match match=new Match(new GameRules(GameType.Constructed),players,"Tabletop Forge match");game=match.createGame();
-            for(int i=0;i<2;i++){Seat seat=new Seat(i,game.getPlayers().get(i));SEATS[i]=seat;seat.controller.setGui(proxy(IGuiGame.class,seat));seat.controller.getYieldController().setPref(FPref.YIELD_AUTO_PASS_NO_ACTIONS,"true");}
+            for(int i=0;i<2;i++){Seat seat=new Seat(i,game.getPlayers().get(i));SEATS[i]=seat;seat.controller.setGui(proxy(IGuiGame.class,seat));seat.controller.getYieldController().setPref(FPref.YIELD_AUTO_PASS_NO_ACTIONS,"true");seat.controller.getYieldController().setPref(FPref.UI_SHOW_ACTIONABLE_HIGHLIGHTS,"true");}
+            game.subscribeToEvents(new SemanticEvents());
             match.startGame(game);states();emit(obj("type","event","message","Game finished"));
         } catch(Throwable e){fail(e);}
     }
@@ -146,10 +192,56 @@ public final class ForgeHumanBridge {
         String type=input.get("type").getAsString();
         if(type.equals("init")){if(initialized)throw new IllegalStateException("Already initialized");initialized=true;new Thread(()->init(input),"Forge match").start();return;}
         int index=input.get("seat").getAsInt();if(index<0||index>1||SEATS[index]==null)throw new IllegalArgumentException("Invalid seat");Seat seat=SEATS[index];
-        if(type.equals("control")){UI.execute(()->{String value=Boolean.toString(!input.get("fullControl").getAsBoolean());seat.controller.getYieldController().setPref(FPref.YIELD_AUTO_PASS_NO_ACTIONS,value);seat.controller.setYieldPref(FPref.YIELD_AUTO_PASS_NO_ACTIONS,value);});return;}
+        if(type.equals("control")){boolean full=input.get("fullControl").getAsBoolean();String value=Boolean.toString(!full);var yields=seat.controller.getYieldController();if(full){yields.setAutoPassUntilStackEmpty(false,true);yields.setAutoPassUntilEndOfTurn(false);yields.clearMarker();}yields.setDisableAutoYields(full);yields.setDisableAutoTriggers(full);yields.setPref(FPref.YIELD_AUTO_PASS_NO_ACTIONS,value);emit(obj("type","control","seat",index,"fullControl",full));acknowledge(input,true,null);UI.execute(()->seat.controller.setYieldPref(FPref.YIELD_AUTO_PASS_NO_ACTIONS,value));return;}
         if(!Objects.equals(seat.requestId,input.get("requestId").getAsString()))throw new IllegalArgumentException("Stale prompt");
-        if(type.equals("choice")){if(seat.pending==null)throw new IllegalStateException("No modal choice");seat.pending.complete(input.get("value"));return;}
-        UI.execute(()->{try{var inputProxy=seat.controller.getInputProxy();switch(type){case "ok":if(!seat.okEnabled)throw new IllegalStateException("OK disabled");inputProxy.selectButtonOK();break;case "cancel":if(!seat.cancelEnabled)throw new IllegalStateException("Cancel disabled");inputProxy.selectButtonCancel();break;case "selectCard":{int id=input.get("cardId").getAsInt();Card found=null;for(Card c:game.getCardsInGame())if(c.getId()==id)found=c;if(found==null||!found.getView().canBeShownTo(seat.player.getView()))throw new IllegalArgumentException("Card unavailable");inputProxy.selectCard(found.getView(),null,null);break;}case "selectPlayer":{int id=input.get("playerId").getAsInt();Player found=null;for(Player p:game.getPlayers())if(p.getId()==id)found=p;if(found==null)throw new IllegalArgumentException("Player unavailable");inputProxy.selectPlayer(found.getView(),null);break;}default:throw new IllegalArgumentException("Unknown command");}states();}catch(Throwable e){emit(obj("type","error","seat",index,"fatal",false,"message",e.toString()));}});
+        if(type.equals("choice")) {
+            CompletableFuture<JsonElement> future=seat.pending;
+            if(future==null)throw new IllegalStateException("No modal choice");
+            JsonElement value=input.get("value");
+            List<JsonElement> values=new ArrayList<>();
+            if(value!=null && value.isJsonArray())value.getAsJsonArray().forEach(values::add);else values.add(value);
+            Set<Integer> unique=new HashSet<>();
+            for(JsonElement item:values) {
+                if(item==null || !item.isJsonPrimitive() || !item.getAsJsonPrimitive().isNumber())throw new IllegalArgumentException("Invalid choice index");
+                int i=item.getAsInt();
+                if(item.getAsDouble()!=i || i<0 || i>=seat.choiceSize || !unique.add(i))throw new IllegalArgumentException("Invalid choice index");
+            }
+            if(unique.size()<seat.choiceMin || unique.size()>seat.choiceMax)throw new IllegalArgumentException("Invalid selection count");
+            seat.requestId=null;
+            acknowledge(input,true,null);
+            future.complete(value);return;
+        }
+        UI.execute(()->{
+            try {
+                if(!Objects.equals(seat.requestId,input.get("requestId").getAsString()) || seat.pending!=null)throw new IllegalArgumentException("Stale prompt");
+                var inputProxy=seat.controller.getInputProxy();
+                Runnable action;
+                switch(type) {
+                    case "ok": if(!seat.okEnabled)throw new IllegalStateException("OK disabled");action=inputProxy::selectButtonOK;break;
+                    case "cancel": if(!seat.cancelEnabled)throw new IllegalStateException("Cancel disabled");action=inputProxy::selectButtonCancel;break;
+                    case "selectCard": {
+                        int id=input.get("cardId").getAsInt();Card found=null;
+                        for(Card c:game.getCardsInGame())if(c.getId()==id)found=c;
+                        if(found==null || !found.getView().canBeShownTo(seat.player.getView()))throw new IllegalArgumentException("Card unavailable");
+                        Card selected=found;action=()->{if(!inputProxy.selectCard(selected.getView(),null,null))seat.input();};break;
+                    }
+                    case "selectPlayer": {
+                        int id=input.get("playerId").getAsInt();Player found=null;
+                        for(Player p:game.getPlayers())if(p.getId()==id)found=p;
+                        if(found==null)throw new IllegalArgumentException("Player unavailable");
+                        Player selected=found;action=()->{inputProxy.selectPlayer(selected.getView(),null);seat.input();};break;
+                    }
+                    default:throw new IllegalArgumentException("Unknown command");
+                }
+                seat.requestId=null;
+                acknowledge(input,true,null);
+                action.run();states();
+            } catch(Throwable e) { acknowledge(input,false,e.toString()); }
+        });
+    }
+    static void acknowledge(JsonObject input,boolean accepted,String error) {
+        if(input.has("commandId"))emit(obj("type","ack","commandId",input.get("commandId").getAsString(),"accepted",accepted,"message",error));
+        else if(!accepted)emit(obj("type","error","fatal",false,"message",error));
     }
     public static void main(String[] args) throws Exception {
         resources=Path.of(args[0]).toAbsolutePath();Path session=Path.of(args[1]).toAbsolutePath();Files.createDirectories(session);
@@ -157,7 +249,7 @@ public final class ForgeHumanBridge {
         Thread.setDefaultUncaughtExceptionHandler((t,e)->fail(e));
         FModel.initialize(proxy(IProgressBar.class,(p,m,a)->m.getReturnType()==boolean.class?false:null),prefs->{prefs.setPref(FPref.LOAD_CARD_SCRIPTS_LAZILY,true);return null;});
         emit(obj("type","ready","engine","forge","protocol",1));
-        try(BufferedReader reader=new BufferedReader(new InputStreamReader(System.in,java.nio.charset.StandardCharsets.UTF_8))){String line;while((line=reader.readLine())!=null){try{command(JsonParser.parseString(line).getAsJsonObject());}catch(Throwable e){emit(obj("type","error","fatal",false,"message",e.toString()));}}}
+        try(BufferedReader reader=new BufferedReader(new InputStreamReader(System.in,java.nio.charset.StandardCharsets.UTF_8))){String line;while((line=reader.readLine())!=null){JsonObject input=null;try{input=JsonParser.parseString(line).getAsJsonObject();command(input);}catch(Throwable e){if(input!=null)acknowledge(input,false,e.toString());else emit(obj("type","error","fatal",false,"message",e.toString()));}}}
         System.exit(0);
     }
 }

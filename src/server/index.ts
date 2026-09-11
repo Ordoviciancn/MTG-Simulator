@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer, WebSocket } from "ws";
+import { createForgeRooms } from './forgeRooms';
 import type {
   Card,
   CardImageDatabase,
@@ -59,6 +60,7 @@ const app = express();
 const server = createServer(app);
 const wss = new WebSocketServer({ server });
 const rooms = new Map<string, Room>();
+const connectForge=createForgeRooms(path.resolve(__dirname,'../..'));
 const publicZoneIds: PublicZoneId[] = ["battlefield", "graveyard", "exile", "stack"];
 
 const orderedPhases = [
@@ -86,7 +88,8 @@ const autoPhases = [
 app.use(express.static(path.resolve(__dirname, "../../dist")));
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
-wss.on("connection", (ws) => {
+wss.on("connection", (ws, request) => {
+  if(request.url==='/forge'){connectForge(ws);return;}
   ws.on("message", (raw) => {
     try {
       handleMessage(ws, JSON.parse(raw.toString()) as ClientMessage);

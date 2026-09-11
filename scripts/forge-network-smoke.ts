@@ -1,0 +1,85 @@
+import assert from 'node:assert/strict';
+import {createServer} from 'node:http';
+import {once} from 'node:events';
+import {WebSocket,WebSocketServer} from 'ws';
+import {createForgeRooms} from '../src/server/forgeRooms';
+import type {ArenaCredential,ArenaRoomView,ArenaServerMessage} from '../src/shared/arenaProtocol';
+import type {Command,CommandReceipt} from '../src/shared/matchProtocol';
+
+process.env.FORGE_TEST_SEED='42';
+const complete=process.argv.includes('--complete');
+const server=createServer(),wss=new WebSocketServer({server}),rooms=createForgeRooms(process.cwd());
+wss.on('connection',rooms);server.listen(0,'127.0.0.1');await once(server,'listening');
+const port=(server.address() as {port:number}).port;
+class Client {
+  ws=new WebSocket(`ws://127.0.0.1:${port}/forge`);
+  view?:ArenaRoomView;credential?:ArenaCredential;errors:string[]=[];events:string[]=[];
+  receipts=new Map<string,CommandReceipt>();
+  constructor(){this.ws.on('message',raw=>{const message=JSON.parse(raw.toString()) as ArenaServerMessage;
+    if(message.type==='view'){this.view=message.room;if(message.room.status==='failed')console.error(message.room.error);}
+    if(message.type==='credential')this.credential=message.credential;
+    if(message.type==='error')this.errors.push(message.message);
+    if(message.type==='event')this.events.push(message.event.kind);
+    if(message.type==='receipt')this.receipts.set(message.receipt.commandId,message.receipt);
+  });}
+  send(message:unknown){this.ws.send(JSON.stringify(message));}
+  async command(operation:string,parameters:Record<string,unknown>,identity?:string){
+    const v=this.view!;const command:Command={protocolVersion:1,matchId:v.matchId,playerId:identity??v.playerId,commandId:crypto.randomUUID(),expectedRevision:v.revision,operation,parameters};
+    this.send({type:'command',command});await wait(()=>this.receipts.has(command.commandId));
+    return {command,receipt:this.receipts.get(command.commandId)!};
+  }
+}
+async function wait(condition:()=>unknown,timeout=20000){const start=Date.now();while(!condition()){const failed=clients.find(c=>c.view?.status==='failed');if(failed)throw new Error(failed.view!.error);if(Date.now()-start>timeout)throw new Error('Network scenario timed out.');await new Promise(resolve=>setTimeout(resolve,20));}}
+const clients=[new Client(),new Client(),new Client()];
+try {
+  await Promise.all(clients.map(c=>once(c.ws,'open')));
+  clients[0].send({type:'create',name:'Human A',deckText:'30 Mountain\n30 Lightning Bolt'});await wait(()=>clients[0].credential);
+  const code=clients[0].credential!.code;
+  clients[2].send({type:'resume',credential:{...clients[0].credential,token:'wrong'}});await wait(()=>clients[2].errors.length);
+  assert.equal(clients[2].view,undefined);
+  clients[1].send({type:'join',code,name:'Human B',deckText:'30 Mountain\n30 Lightning Bolt'});
+  await wait(()=>clients.some(c=>c.view?.prompt),120000);
+  let resolved=false,verifiedDuplicate=false;
+  for(let step=0;step<(complete?250:50)&&!resolved;step++){
+    await wait(()=>clients.slice(0,2).some(c=>c.view?.prompt)||clients.some(c=>complete?c.view?.snapshot?.gameOver:c.view?.snapshot?.players.some(p=>p.life===17)));
+    const damaged=clients.find(c=>complete?c.view?.snapshot?.gameOver:c.view?.snapshot?.players.some(p=>p.life===17));
+    if(damaged){resolved=true;break;}
+    const client=clients.slice(0,2).find(c=>c.view?.prompt)!;
+    const room=client.view!,prompt=room.prompt!,state=room.snapshot!;
+    if(process.argv.includes('--trace'))console.log(JSON.stringify({step,seat:room.seat,input:prompt.inputType,life:state.players.map(p=>p.life),phase:state.phase,options:prompt.options}));
+    assert.equal(state.players.find(p=>p.id!==room.playerId)?.hand.length,0);
+    let operation='ok',parameters:Record<string,unknown>={requestId:prompt.requestId};
+    if(prompt.inputType==='InputPassPriority'){
+      const own=state.players.find(p=>p.id===room.playerId)!;
+      const name=own.battlefield.length?'Lightning Bolt':'Mountain';
+      const card=complete?(own.hand.find(c=>c.actionable&&c.name==='Mountain')??own.hand.find(c=>c.actionable&&c.name==='Lightning Bolt')):own.hand.find(c=>c.name===name);
+      if(state.activePlayerId===room.playerId&&card){operation='selectCard';parameters.cardId=card.id;}
+    }else if(prompt.inputType==='InputSelectTargets'){
+      operation='selectPlayer';parameters.playerId=state.players.find(p=>p.id!==room.playerId)!.id;
+    }else if(prompt.kind==='choice'){
+      assert.equal(prompt.options?.length,1);operation='choice';parameters.value=prompt.options![0].value;
+    }else assert.ok(prompt.okEnabled,JSON.stringify(prompt));
+    if(!verifiedDuplicate){
+      const forged=await client.command(operation,parameters,state.players.find(p=>p.id!==room.playerId)!.id);
+      assert.equal(forged.receipt.code,'identity');
+    }
+    const result=await client.command(operation,parameters);
+    if(result.receipt.status==='resync')continue;
+    assert.equal(result.receipt.status,'accepted',JSON.stringify({prompt,result}));
+    if(!verifiedDuplicate){
+      client.receipts.delete(result.command.commandId);client.send({type:'command',command:result.command});await wait(()=>client.receipts.has(result.command.commandId));
+      assert.deepEqual(client.receipts.get(result.command.commandId),result.receipt);verifiedDuplicate=true;
+    }
+  }
+  assert.equal(resolved,true);
+  await wait(()=>clients[0].view?.snapshot?.stack.length===0&&clients[0].view?.snapshot?.players.some(p=>p.graveyard.some(c=>c.name==='Lightning Bolt')));
+  assert.ok(clients[0].events.includes('life'));assert.ok(clients[0].events.includes('cast'));assert.ok(clients[0].events.includes('resolve'));
+  const credential=clients[0].credential!,before=clients[0].view!.snapshot!;
+  clients[0].ws.close();await once(clients[0].ws,'close');
+  const resumed=new Client();clients.push(resumed);await once(resumed.ws,'open');resumed.send({type:'resume',credential});await wait(()=>resumed.view);
+  assert.deepEqual(resumed.view!.snapshot?.players.map(p=>p.life),before.players.map(p=>p.life));
+  assert.equal(resumed.view!.playerId,credential.playerId);
+  console.log(JSON.stringify({engine:'forge',networkSpellResolved:true,seatImpersonationRejected:true,duplicateReceiptStable:true,semanticEvents:true,reconnect:true,completedDamageMatch:complete,fullGameVerified:false}));
+}finally{
+  for(const client of clients)client.ws.close();await rooms.close();wss.close();server.close();
+}

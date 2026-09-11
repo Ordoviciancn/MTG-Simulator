@@ -11,7 +11,8 @@
     "build": "tsc --noEmit && vite build",
     "start": "tsx src/server/index.ts",
     "forge:probe": "tsx scripts/forge-probe.ts",
-    "forge:human-smoke": "tsx scripts/forge-human-smoke.ts"
+    "forge:human-smoke": "tsx scripts/forge-human-smoke.ts",
+    "forge:network-smoke": "tsx scripts/forge-network-smoke.ts"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.0.0",
