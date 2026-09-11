@@ -14,9 +14,16 @@ export function ForgeControls({prompt,fullControl,onControl,onDecision,english=f
         <button className="secondary" disabled={!prompt.cancelEnabled} onClick={()=>onDecision({type:'cancel',requestId:prompt.requestId})}>{prompt.cancelLabel || text('取消','Cancel')}</button>
       </div>}
       {prompt.kind === 'choice' && <ForgeChoice key={prompt.requestId} prompt={prompt} onDecision={onDecision} english={english}/>}
+      {prompt.kind === 'number' && <ForgeNumber key={prompt.requestId} prompt={prompt} onDecision={onDecision} english={english}/>}
       {prompt.kind === 'unsupported' && <strong role="alert">{text('此决策尚未支持，游戏已暂停','This decision is not supported; the game is paused')}</strong>}
     </div>}
   </section>;
+}
+
+function ForgeNumber({prompt,onDecision,english}:{prompt:ForgePrompt;onDecision:(decision:ForgeDecision)=>void;english:boolean}){
+  const [value,setValue]=useState(String(prompt.min??0));
+  const number=Number(value),valid=value.trim()!==''&&Number.isSafeInteger(number)&&number>=(prompt.min??0)&&number<=(prompt.max??0);
+  return <div><label>{english?'Value':'数值'}<input type="number" step="1" min={prompt.min} max={prompt.max} value={value} onChange={event=>setValue(event.target.value)}/></label><button disabled={!valid} onClick={()=>onDecision({type:'choice',requestId:prompt.requestId,value:number})}>{english?'Confirm value':'确认数值'}</button></div>;
 }
 
 function ForgeChoice({prompt,onDecision,english}:{prompt:ForgePrompt;onDecision:(decision:ForgeDecision)=>void;english:boolean}) {

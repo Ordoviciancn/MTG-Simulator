@@ -19,3 +19,11 @@ test('mandatory choices cannot be bypassed by priority confirmation',()=>{
   assert.equal(validateForgeDecision(choice,{type:'choice',requestId:'r1',value:[2]}),false);
   assert.equal(validateForgeDecision(choice,{type:'choice',requestId:'r1',value:[0,1]}),true);
 });
+
+test('numeric choices require a bounded integer and cannot be passed as priority',()=>{
+  const numeric:ForgePrompt={seat:0,requestId:'x',kind:'number',message:'Choose X',min:0,max:2147483647};
+  assert.equal(validateForgeDecision(numeric,{type:'choice',requestId:'x',value:3}),true);
+  for(const value of [-1,1.5,2147483648,NaN,Infinity,[1]])assert.equal(validateForgeDecision(numeric,{type:'choice',requestId:'x',value}),false);
+  assert.equal(validateForgeDecision(numeric,{type:'ok',requestId:'x'}),false);
+  assert.equal(validateForgeDecision(numeric,{type:'choice',requestId:'old',value:1}),false);
+});

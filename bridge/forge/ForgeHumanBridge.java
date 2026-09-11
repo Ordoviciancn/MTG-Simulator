@@ -54,6 +54,7 @@ public final class ForgeHumanBridge {
         volatile String requestId;
         volatile CompletableFuture<JsonElement> pending;
         int choiceMin,choiceMax,choiceSize;
+        String choiceKind="choice";
         String message="";
         boolean okEnabled,cancelEnabled;
         String okLabel="OK",cancelLabel="Cancel";
@@ -66,14 +67,15 @@ public final class ForgeHumanBridge {
         void publishInput() {
             if(pending!=null)return;
             Object current=controller.getInputProxy().getInput();
-            if(current==null || current.getClass().getSimpleName().equals("InputLockUI"))return;
+            if(current==null || current.getClass().getSimpleName().equals("InputLockUI")){closeInput();return;}
             if(requestId==null || current!=inputIdentity) { requestId=Long.toString(IDS.incrementAndGet());inputIdentity=current; }
             states();
             emit(obj("type","prompt","seat",index,"requestId",requestId,"kind","input","inputType",current==null?"":current.getClass().getSimpleName(),"message",message,"okEnabled",okEnabled,"cancelEnabled",cancelEnabled,"okLabel",okLabel,"cancelLabel",cancelLabel));
         }
+        void closeInput(){if(pending==null){requestId=null;emit(obj("type","promptClosed","seat",index));}}
         JsonElement choose(String message,List<?> choices,int min,int max) throws Exception {
             CompletableFuture<JsonElement> future=new CompletableFuture<>();
-            choiceMin=min;choiceMax=max;choiceSize=choices.size();pending=future;
+            choiceKind="choice";choiceMin=min;choiceMax=max;choiceSize=choices.size();pending=future;
             requestId=Long.toString(IDS.incrementAndGet());
             List<Object> options=new ArrayList<>();
             for(int i=0;i<choices.size();i++) options.add(obj("value",i,"label",String.valueOf(choices.get(i))));
@@ -90,6 +92,13 @@ public final class ForgeHumanBridge {
             if(unique.size()<min||unique.size()>max) throw new IllegalArgumentException("Invalid selection count");
             List<Object> result=new ArrayList<>(); for(int i:unique) result.add(choices.get(i)); return result;
         }
+        int chooseNumber(String message,int min,int max) throws Exception {
+            if(min>max)throw new IllegalArgumentException("Invalid numeric bounds");
+            CompletableFuture<JsonElement> future=new CompletableFuture<>();
+            choiceKind="number";choiceMin=min;choiceMax=max;pending=future;requestId=Long.toString(IDS.incrementAndGet());
+            states();emit(obj("type","prompt","seat",index,"requestId",requestId,"kind","number","message",message,"min",min,"max",max));
+            try{return future.get().getAsInt();}finally{pending=null;requestId=null;}
+        }
         @Override public Object invoke(Object proxy,Method method,Object[] a) throws Throwable {
             String n=method.getName();
             if(method.isDefault()) return InvocationHandler.invokeDefault(proxy,method,a);
@@ -101,6 +110,7 @@ public final class ForgeHumanBridge {
                 case "getGameSpeed": return forge.gui.control.PlaybackSpeed.NORMAL;
                 case "getDayTime": return "";
                 case "getGamestate": return null;
+                case "awaitNextInput": closeInput();return null;
                 case "setWeaklySelectable": actionable.clear();for(Object c:(Iterable<?>)a[0])actionable.add(((CardView)c).getId());return null;
                 case "clearWeaklySelectable": actionable.clear();return null;
                 case "showPromptMessage": message=String.valueOf(a[1]); input(); return null;
@@ -108,6 +118,7 @@ public final class ForgeHumanBridge {
                 case "getAbilityToPlay": {List<?> abilities=(List<?>)a[1];return abilities.size()==1?abilities.get(0):chooseList("Choose ability",abilities,1,1).get(0);}
                 case "one": case "oneOrNone": { List<?> picked=chooseList((String)a[0],(List<?>)a[1],n.equals("one")?1:0,1); return picked.isEmpty()?null:picked.get(0); }
                 case "getChoices": return chooseList((String)a[0],(List<?>)a[3],(int)a[1],(int)a[2]);
+                case "getInteger": return chooseNumber((String)a[0],(int)a[1],(int)a[2]);
                 case "many": return chooseList((String)a[0]+" "+a[1],(List<?>)a[4],(int)a[2],(int)a[3]);
                 case "confirm": return chooseList((String)a[1],(List<?>)a[3],1,1).get(0).equals(((List<?>)a[3]).get(0));
                 case "showConfirmDialog": return chooseList((String)a[0],List.of(a[2],a[3]),1,1).get(0).equals(a[2]);
@@ -210,6 +221,12 @@ public final class ForgeHumanBridge {
             CompletableFuture<JsonElement> future=seat.pending;
             if(future==null)throw new IllegalStateException("No modal choice");
             JsonElement value=input.get("value");
+            if(seat.choiceKind.equals("number")) {
+                if(value==null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isNumber())throw new IllegalArgumentException("Invalid integer");
+                double number=value.getAsDouble();
+                if(!Double.isFinite(number) || number!=Math.rint(number) || number<seat.choiceMin || number>seat.choiceMax)throw new IllegalArgumentException("Integer out of range");
+                seat.requestId=null;acknowledge(input,true,null);future.complete(value);return;
+            }
             List<JsonElement> values=new ArrayList<>();
             if(value!=null && value.isJsonArray())value.getAsJsonArray().forEach(values::add);else values.add(value);
             Set<Integer> unique=new HashSet<>();
@@ -224,8 +241,9 @@ public final class ForgeHumanBridge {
             future.complete(value);return;
         }
         UI.execute(()->{
+            boolean delivered=false;
             try {
-                if(!Objects.equals(seat.requestId,input.get("requestId").getAsString()) || seat.pending!=null)throw new IllegalArgumentException("Stale prompt");
+                if(!Objects.equals(seat.requestId,input.get("requestId").getAsString()) || seat.pending!=null || seat.inputIdentity!=seat.controller.getInputProxy().getInput())throw new IllegalArgumentException("Stale prompt");
                 var inputProxy=seat.controller.getInputProxy();
                 Runnable action;
                 switch(type) {
@@ -247,8 +265,9 @@ public final class ForgeHumanBridge {
                 }
                 seat.requestId=null;
                 acknowledge(input,true,null);
+                delivered=true;
                 action.run();states();
-            } catch(Throwable e) { acknowledge(input,false,e.toString()); }
+            } catch(Throwable e) { if(delivered)fail(e);else acknowledge(input,false,e.toString()); }
         });
     }
     static void acknowledge(JsonObject input,boolean accepted,String error) {

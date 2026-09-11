@@ -3,6 +3,7 @@ import type { ForgeDecision, ForgePrompt } from '../shared/forgeTypes';
 export function validateForgeDecision(prompt: ForgePrompt | undefined, decision: ForgeDecision): boolean {
   if (!prompt || prompt.kind === 'unsupported' || decision.requestId !== prompt.requestId) return false;
   if (decision.type === 'choice') {
+    if(prompt.kind==='number')return Number.isSafeInteger(decision.value) && typeof decision.value==='number' && decision.value>=(prompt.min??0) && decision.value<=(prompt.max??0);
     if (prompt.kind !== 'choice' || !prompt.options) return false;
     const values = Array.isArray(decision.value) ? decision.value : [decision.value];
     if (values.length < (prompt.min ?? 1) || values.length > (prompt.max ?? 1) || new Set(values).size !== values.length) return false;

@@ -86,7 +86,7 @@ class ForgeRoom {
     if(message.type==='state'){
       this.snapshots[seat]=this.projections[seat].snapshot(message);this.status='playing';
     }else if(message.type==='prompt'){
-      if(!['input','choice','unsupported'].includes(String(message.kind)))throw new Error('Invalid Forge prompt.');
+      if(!['input','choice','number','unsupported'].includes(String(message.kind)))throw new Error('Invalid Forge prompt.');
       const clean=(text:unknown)=>String(text??'').replace(/\s*\(\d+\)/g,'');
       const prompt:ForgePrompt={seat,requestId:String(message.requestId),kind:message.kind as ForgePrompt['kind'],message:clean(message.message)};
       if(typeof message.inputType==='string')prompt.inputType=message.inputType;
@@ -96,7 +96,8 @@ class ForgeRoom {
       if(typeof message.min==='number')prompt.min=message.min;if(typeof message.max==='number')prompt.max=message.max;
       if(JSON.stringify(this.prompts[seat])===JSON.stringify(prompt))return;
       this.prompts[seat]=prompt;
-    }else if(message.type==='control')this.fullControl[seat]=message.fullControl===true;
+    }else if(message.type==='promptClosed')this.prompts[seat]=null;
+    else if(message.type==='control')this.fullControl[seat]=message.fullControl===true;
     else return;
     this.revision++;this.broadcast();
   }
