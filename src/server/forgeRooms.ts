@@ -58,7 +58,8 @@ class ForgeRoom {
   }
   async close(){this.remove();if(this.expiry)clearTimeout(this.expiry);await this.process?.stop();await this.cleanup?.();}
   fail(error:Error){
-    this.status='failed';this.error='规则引擎已中断，对局已冻结：'+error.message;this.prompts.fill(null);this.revision++;
+    console.error('[Forge match]',this.id,error);
+    this.status='failed';this.error='规则引擎已中断，对局已冻结。请检查服务端诊断。';this.prompts.fill(null);this.revision++;
     for(const pending of this.pending.values()){clearTimeout(pending.timer);pending.reject(error);}this.pending.clear();this.broadcast();
     void this.process?.stop().then(()=>this.cleanup?.());
   }
@@ -86,7 +87,7 @@ class ForgeRoom {
     if(message.type==='state'){
       this.snapshots[seat]=this.projections[seat].snapshot(message);this.status='playing';
     }else if(message.type==='prompt'){
-      if(!['input','choice','number','unsupported'].includes(String(message.kind)))throw new Error('Invalid Forge prompt.');
+      if(!['input','choice','order','number','unsupported'].includes(String(message.kind)))throw new Error('Invalid Forge prompt.');
       const clean=(text:unknown)=>String(text??'').replace(/\s*\(\d+\)/g,'');
       const prompt:ForgePrompt={seat,requestId:String(message.requestId),kind:message.kind as ForgePrompt['kind'],message:clean(message.message)};
       if(typeof message.inputType==='string')prompt.inputType=message.inputType;

@@ -27,3 +27,9 @@ test('numeric choices require a bounded integer and cannot be passed as priority
   assert.equal(validateForgeDecision(numeric,{type:'ok',requestId:'x'}),false);
   assert.equal(validateForgeDecision(numeric,{type:'choice',requestId:'old',value:1}),false);
 });
+
+test('ordered choices require the complete unique permutation when all entries are mandatory',()=>{
+  const order:ForgePrompt={seat:0,requestId:'order',kind:'order',message:'Order top cards',min:2,max:2,options:[{value:0,label:'A'},{value:1,label:'B'}]};
+  assert.equal(validateForgeDecision(order,{type:'choice',requestId:'order',value:[1,0]}),true);
+  for(const value of [[0],[1,1],[0,1,2]])assert.equal(validateForgeDecision(order,{type:'choice',requestId:'order',value}),false);
+});

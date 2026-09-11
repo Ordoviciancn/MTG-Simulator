@@ -10,6 +10,7 @@ process.env.FORGE_TEST_SEED='42';
 const complete=process.argv.includes('--complete');
 const combat=process.argv.includes('--combat');
 const numeric=process.argv.includes('--x');
+const scry=process.argv.includes('--scry');
 const server=createServer(),wss=new WebSocketServer({server}),rooms=createForgeRooms(process.cwd());
 wss.on('connection',rooms);server.listen(0,'127.0.0.1');await once(server,'listening');
 const port=(server.address() as {port:number}).port;
@@ -35,8 +36,9 @@ async function wait(condition:()=>unknown,timeout=20000){const start=Date.now();
 const clients=[new Client(),new Client(),new Client()];
 try {
   await Promise.all(clients.map(c=>once(c.ws,'open')));
-  const spellName=numeric?'Blaze':combat?'Grizzly Bears':'Lightning Bolt';
-  const deckText=`30 ${combat?'Forest':'Mountain'}\n30 ${spellName}`;
+  const spellName=scry?'Preordain':numeric?'Blaze':combat?'Grizzly Bears':'Lightning Bolt';
+  const landName=scry?'Island':combat?'Forest':'Mountain';
+  const deckText=`30 ${landName}\n30 ${spellName}`;
   clients[0].send({type:'create',name:'Human A',deckText});await wait(()=>clients[0].credential);
   const code=clients[0].credential!.code;
   clients[2].send({type:'resume',credential:{...clients[0].credential,token:'wrong'}});await wait(()=>clients[2].errors.length);
@@ -44,7 +46,8 @@ try {
   clients[1].send({type:'join',code,name:'Human B',deckText});
   await wait(()=>clients.some(c=>c.view?.prompt),120000);
   let resolved=false,verifiedDuplicate=false,blocked=false,summoningChecked=false,numericChosen=false;
-  const done=(c:Client)=>combat?blocked&&c.view?.snapshot?.players.some(p=>p.life<20):complete?c.view?.snapshot?.gameOver:c.view?.snapshot?.players.some(p=>p.life===(numeric?19:17));
+  let ordered:{seat:number;name:string;handIds:string[]}|undefined;
+  const done=(c:Client)=>scry?ordered&&c.view?.seat===ordered.seat&&c.view.snapshot?.players[ordered.seat].hand.some(card=>!ordered!.handIds.includes(card.id))&&c.view.snapshot.players[ordered.seat].graveyard.some(card=>card.name===spellName):combat?blocked&&c.view?.snapshot?.players.some(p=>p.life<20):complete?c.view?.snapshot?.gameOver:c.view?.snapshot?.players.some(p=>p.life===(numeric?19:17));
   for(let step=0;step<(complete||combat?250:50)&&!resolved;step++){
     await wait(()=>clients.slice(0,2).some(c=>c.view?.prompt)||clients.some(done));
     const damaged=clients.find(done);
@@ -57,7 +60,7 @@ try {
     if(prompt.inputType==='InputPassPriority'){
       const own=state.players.find(p=>p.id===room.playerId)!;
       const name=own.battlefield.length?'Lightning Bolt':'Mountain';
-      const card=complete||combat||numeric?(own.hand.find(c=>c.actionable&&c.name===(combat?'Forest':'Mountain'))??own.hand.find(c=>c.actionable&&c.name===spellName&&(!numeric||own.battlefield.filter(c=>c.kind==='land'&&!c.tapped).length>=2))):own.hand.find(c=>c.name===name);
+      const card=complete||combat||numeric||scry?(own.hand.find(c=>c.actionable&&c.name===landName)??own.hand.find(c=>c.actionable&&c.name===spellName&&(!numeric||own.battlefield.filter(c=>c.kind==='land'&&!c.tapped).length>=2))):own.hand.find(c=>c.name===name);
       if(state.activePlayerId===room.playerId&&card){operation='selectCard';parameters.cardId=card.id;}
     }else if(prompt.inputType==='InputAttack'){
       if(!state.combat.length)operation='cancel';
@@ -76,6 +79,11 @@ try {
       const bad=await client.command('choice',{requestId:prompt.requestId,value:-1});
       assert.equal(bad.receipt.status,'rejected');assert.equal(client.view?.prompt?.requestId,prompt.requestId);
       numericChosen=true;
+    }else if(prompt.kind==='order'){
+      assert.equal(scry,true);assert.equal(prompt.options?.length,2);operation='choice';parameters.value=prompt.options!.map(option=>option.value).reverse();
+      ordered={seat:room.seat,name:prompt.options![1].label,handIds:state.players[room.seat].hand.map(c=>c.id)};
+    }else if(scry&&prompt.kind==='choice'&&prompt.min===0){
+      assert.equal(prompt.max,2);operation='choice';parameters.value=[];
     }else if(prompt.kind==='choice'){
       assert.equal(prompt.options?.length,1);operation='choice';parameters.value=prompt.options![0].value;
     }else assert.ok(prompt.okEnabled,JSON.stringify(prompt));
@@ -93,7 +101,7 @@ try {
   }
   assert.equal(resolved,true);
   await wait(()=>clients[0].view?.snapshot?.stack.length===0&&clients[0].view?.snapshot?.players.some(p=>p.graveyard.some(c=>c.name===spellName)));
-  assert.ok(clients[0].events.includes('life'));assert.ok(clients[0].events.includes('cast'));assert.ok(clients[0].events.includes('resolve'));
+  if(!scry)assert.ok(clients[0].events.includes('life'));assert.ok(clients[0].events.includes('cast'));assert.ok(clients[0].events.includes('resolve'));
   const credential=clients[0].credential!,before=clients[0].view!.snapshot!;
   clients[0].ws.close();await once(clients[0].ws,'close');
   const resumed=new Client();clients.push(resumed);await once(resumed.ws,'open');resumed.send({type:'resume',credential});await wait(()=>resumed.view);
@@ -101,7 +109,8 @@ try {
   assert.equal(resumed.view!.playerId,credential.playerId);
   if(combat){assert.equal(blocked,true);assert.equal(summoningChecked,true);assert.ok(clients[0].events.includes('combat'));assert.ok(clients[0].view!.snapshot!.players.every(p=>p.graveyard.some(c=>c.name==='Grizzly Bears')));assert.ok(clients[0].view!.snapshot!.players.some(p=>p.life===18));}
   if(numeric){assert.equal(numericChosen,true);assert.ok(before.players.some(p=>p.battlefield.filter(c=>c.tapped&&c.kind==='land').length===2));}
-  console.log(JSON.stringify({engine:'forge',networkSpellResolved:!combat,combatBlockedAndDamaged:combat&&blocked,xValuePaidAndResolved:numeric&&numericChosen,seatImpersonationRejected:true,duplicateReceiptStable:true,semanticEvents:true,reconnect:true,completedDamageMatch:complete,fullGameVerified:false}));
+  if(scry){assert.ok(ordered);assert.equal(clients[ordered.seat].view!.snapshot!.players[ordered.seat].hand.find(c=>!ordered!.handIds.includes(c.id))?.name,ordered.name);}
+  console.log(JSON.stringify({engine:'forge',networkSpellResolved:!combat,combatBlockedAndDamaged:combat&&blocked,xValuePaidAndResolved:numeric&&numericChosen,scryOrderedAndDrawn:scry&&!!ordered,seatImpersonationRejected:true,duplicateReceiptStable:true,semanticEvents:true,reconnect:true,completedDamageMatch:complete,fullGameVerified:false}));
 }finally{
   for(const client of clients)client.ws.close();await rooms.close();wss.close();server.close();
 }

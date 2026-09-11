@@ -74,17 +74,24 @@ public final class ForgeHumanBridge {
         }
         void closeInput(){if(pending==null){requestId=null;emit(obj("type","promptClosed","seat",index));}}
         JsonElement choose(String message,List<?> choices,int min,int max) throws Exception {
+            return choose(message,choices,min,max,false);
+        }
+        JsonElement choose(String message,List<?> choices,int min,int max,boolean ordered) throws Exception {
             CompletableFuture<JsonElement> future=new CompletableFuture<>();
-            choiceKind="choice";choiceMin=min;choiceMax=max;choiceSize=choices.size();pending=future;
+            choiceKind=ordered?"order":"choice";choiceMin=min;choiceMax=max;choiceSize=choices.size();pending=future;
             requestId=Long.toString(IDS.incrementAndGet());
             List<Object> options=new ArrayList<>();
             for(int i=0;i<choices.size();i++) options.add(obj("value",i,"label",String.valueOf(choices.get(i))));
             states();
-            emit(obj("type","prompt","seat",index,"requestId",requestId,"kind","choice","message",message,"options",options,"min",min,"max",max));
+            emit(obj("type","prompt","seat",index,"requestId",requestId,"kind",choiceKind,"message",message,"options",options,"min",min,"max",max));
             try { return future.get(); } finally { pending=null; requestId=null; }
         }
         List<?> chooseList(String message,List<?> choices,int min,int max) throws Exception {
-            JsonElement answer=choose(message,choices,min,max);
+            return chooseList(message,choices,min,max,false);
+        }
+        List<?> chooseList(String message,List<?> choices,int min,int max,boolean ordered) throws Exception {
+            min=Math.max(0,min);max=max<0?choices.size():Math.min(max,choices.size());
+            JsonElement answer=choose(message,choices,min,max,ordered);
             List<JsonElement> indices=new ArrayList<>();
             if(answer.isJsonArray()) answer.getAsJsonArray().forEach(indices::add); else indices.add(answer);
             Set<Integer> unique=new LinkedHashSet<>();
@@ -120,6 +127,12 @@ public final class ForgeHumanBridge {
                 case "getChoices": return chooseList((String)a[0],(List<?>)a[3],(int)a[1],(int)a[2]);
                 case "getInteger": return chooseNumber((String)a[0],(int)a[1],(int)a[2]);
                 case "many": return chooseList((String)a[0]+" "+a[1],(List<?>)a[4],(int)a[2],(int)a[3]);
+                case "order": {
+                    List<Object> all=new ArrayList<>((List<?>)a[4]);if(a[5]!=null)all.addAll((List<?>)a[5]);
+                    int min=(int)a[3]<0?0:all.size()-(int)a[3],max=(int)a[2]<0?all.size():all.size()-(int)a[2];
+                    return new IGuiGame.OrderResult<>(chooseList(a[0]+"\n"+a[1],all,min,max,true),false);
+                }
+                case "insertInList": {List<Object> ordered=new ArrayList<>((List<?>)a[2]);int position=chooseNumber(a[0]+"\nInsertion index (0 = first)",0,ordered.size());ordered.add(position,a[1]);return ordered;}
                 case "confirm": return chooseList((String)a[1],(List<?>)a[3],1,1).get(0).equals(((List<?>)a[3]).get(0));
                 case "showConfirmDialog": return chooseList((String)a[0],List.of(a[2],a[3]),1,1).get(0).equals(a[2]);
                 case "showOptionDialog": return choose((String)a[0],(List<?>)a[3],1,1).getAsInt();
@@ -278,7 +291,7 @@ public final class ForgeHumanBridge {
         resources=Path.of(args[0]).toAbsolutePath();Path session=Path.of(args[1]).toAbsolutePath();Files.createDirectories(session);
         GuiBase.setInterface(proxy(IGuiBase.class,(p,m,a)->base(m,a)));
         Thread.setDefaultUncaughtExceptionHandler((t,e)->fail(e));
-        FModel.initialize(proxy(IProgressBar.class,(p,m,a)->m.getReturnType()==boolean.class?false:null),prefs->{prefs.setPref(FPref.LOAD_CARD_SCRIPTS_LAZILY,true);return null;});
+        FModel.initialize(proxy(IProgressBar.class,(p,m,a)->m.getReturnType()==boolean.class?false:null),prefs->{prefs.setPref(FPref.LOAD_CARD_SCRIPTS_LAZILY,true);prefs.setPref(FPref.UI_SELECT_FROM_CARD_DISPLAYS,false);return null;});
         emit(obj("type","ready","engine","forge","protocol",1));
         try(BufferedReader reader=new BufferedReader(new InputStreamReader(System.in,java.nio.charset.StandardCharsets.UTF_8))){String line;while((line=reader.readLine())!=null){JsonObject input=null;try{input=JsonParser.parseString(line).getAsJsonObject();command(input);}catch(Throwable e){if(input!=null)acknowledge(input,false,e.toString());else emit(obj("type","error","fatal",false,"message",e.toString()));}}}
         System.exit(0);

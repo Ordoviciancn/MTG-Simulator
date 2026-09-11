@@ -1,7 +1,7 @@
 export type ForgePrompt = {
   seat: number;
   requestId: string;
-  kind: 'input' | 'choice' | 'number' | 'unsupported';
+  kind: 'input' | 'choice' | 'order' | 'number' | 'unsupported';
   message: string;
   inputType?:string;
   options?: { value: number; label: string }[];

@@ -60,5 +60,6 @@ pnpm start
 - `pnpm forge:network-smoke` 使用临时本机端口、真实 Java 引擎和独立网络座位验证施法、身份、回执与重连；`--complete` 继续伤害对局直至 Forge 宣布终局。该测试不是所有机制覆盖证明。
 - `pnpm forge:network-smoke --combat` 验证灰棕熊夹具中的召唤失调、攻击、阻挡互换和未阻挡的 2 点伤害。战斗关系由 Java 投影，客户端 `CombatLines.tsx` 只连接已确认的对象引用。
 - `pnpm forge:network-smoke --x` 验证 Blaze 的 X=1、两块山脉支付、伤害、越界数值拒绝和数值窗口中的独立完全操控切换；数值选择不得由优先权确认替代。
+- `pnpm forge:network-smoke --scry` 验证 Preordain 占卜的可选移底、牌库顶排序和实际抽牌。Java 使用 Forge 的列表选择界面路径，私密选项只路由给所属座位；引擎原始异常留在服务端，不广播可能包含私密卡名的异常文本。
 - Forge 房间凭据由服务端随机生成，浏览器按标签页保存；客户端自报 playerId 不能代替座位凭据。外部卡牌引用按观察者分配，离开可见区域后失效。
 - 新客户端动画入口为 `SemanticCanvas.tsx`，只消费 Forge 语义事件。当前 Java 崩溃时冻结房间，不声称可恢复崩溃前引擎状态。

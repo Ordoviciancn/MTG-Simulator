@@ -13,7 +13,7 @@ export function ForgeControls({prompt,fullControl,onControl,onDecision,english=f
         <button disabled={!prompt.okEnabled} onClick={()=>onDecision({type:'ok',requestId:prompt.requestId})}>{prompt.okLabel || text('确认','Confirm')}</button>
         <button className="secondary" disabled={!prompt.cancelEnabled} onClick={()=>onDecision({type:'cancel',requestId:prompt.requestId})}>{prompt.cancelLabel || text('取消','Cancel')}</button>
       </div>}
-      {prompt.kind === 'choice' && <ForgeChoice key={prompt.requestId} prompt={prompt} onDecision={onDecision} english={english}/>}
+      {(prompt.kind === 'choice'||prompt.kind==='order') && <ForgeChoice key={prompt.requestId} prompt={prompt} onDecision={onDecision} english={english}/>}
       {prompt.kind === 'number' && <ForgeNumber key={prompt.requestId} prompt={prompt} onDecision={onDecision} english={english}/>}
       {prompt.kind === 'unsupported' && <strong role="alert">{text('此决策尚未支持，游戏已暂停','This decision is not supported; the game is paused')}</strong>}
     </div>}
@@ -27,10 +27,11 @@ function ForgeNumber({prompt,onDecision,english}:{prompt:ForgePrompt;onDecision:
 }
 
 function ForgeChoice({prompt,onDecision,english}:{prompt:ForgePrompt;onDecision:(decision:ForgeDecision)=>void;english:boolean}) {
-  const [selected,setSelected]=useState<number[]>([]);
+  const [selected,setSelected]=useState<number[]>(()=>prompt.kind==='order'&&prompt.min===prompt.options?.length?(prompt.options??[]).map(option=>option.value):[]);
   const min=prompt.min??1,max=prompt.max??1;
   return <div role="group" aria-label={prompt.message}>
     <div className="forgeChoices">{prompt.options?.map(option=><button key={option.value} aria-pressed={selected.includes(option.value)} onClick={()=>setSelected(values=>values.includes(option.value)?values.filter(value=>value!==option.value):max===1?[option.value]:values.length<max?[...values,option.value]:values)}>{option.label}</button>)}</div>
+    {prompt.kind==='order'&&<ol className="forge-order">{selected.map((value,index)=><li key={value}><span>{prompt.options?.find(option=>option.value===value)?.label}</span><button aria-label={english?'Move earlier':'前移'} disabled={index===0} onClick={()=>setSelected(values=>{const next=[...values];[next[index-1],next[index]]=[next[index],next[index-1]];return next;})}>↑</button><button aria-label={english?'Move later':'后移'} disabled={index===selected.length-1} onClick={()=>setSelected(values=>{const next=[...values];[next[index],next[index+1]]=[next[index+1],next[index]];return next;})}>↓</button></li>)}</ol>}
     <button disabled={selected.length<min || selected.length>max} onClick={()=>onDecision({type:'choice',requestId:prompt.requestId,value:max===1&&selected.length===1?selected[0]:selected})}>{english?'Confirm selection':'确认选择'} ({selected.length}/{max})</button>
   </div>;
 }
