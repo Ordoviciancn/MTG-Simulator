@@ -2,13 +2,15 @@
 
 ## 当前状态
 
-Forge 固定版本的父工程、forge-core、forge-game 和 forge-ai 已编译通过，上游自带的 3 项测试通过；Node 调用 Java 的最小初始化、抓牌与事件验证已通过。尚未接通网页或启动可交互对局，现有房间仍运行手动牌桌。参考视频未能读取，以下动画为待验证的设计，不是逐帧复刻结果。
+Forge 固定版本的父工程、forge-core、forge-game、forge-ai 和 forge-gui 已构建通过；Node 调用 Java 的最小初始化、抓牌与事件验证已通过。真人桥接代码尚未通过完整运行验收，现有房间仍运行手动牌桌。用户本地录屏已完成交互观察，见 `录屏交互观察.md`，尚未达到逐帧一致。
+
+实施顺序与验收门槛以 [Forge 自动对局与竞技场交互规划](superpowers/plans/2026-09-11-Forge自动对局与竞技场交互规划.md) 为准。
 
 上游：https://github.com/Card-Forge/forge 。本次核对 HEAD 为 `c86308451651af63c1b4a69a2c47f9cd478d53f6`，记录于 `config/forge-source.json`。构建要求来自上游 pom.xml：Java 17，Maven >= 3.8.1。Forge 仓库标注 GPL-3.0；引入、修改与分发上游代码须保留许可证及对应源码安排，不因独立进程就假定免除义务。
 
 ## 技术选择
 
-优先在现有 React/TypeScript 客户端中引入 Three.js 三维战场，保留网页联机、牌表导入及工具面板。相较立刻重写 Unity 客户端，这一路径需要迁移的现有功能更少；是否达到最终视觉目标需以真实场景帧时间和美术样片验证。
+优先完成现有 React/TypeScript 客户端与 Forge 的规则闭环，保留网页联机、牌表导入及工具面板。当前场景采用图片、CSS 与浏览器动画；只有实际性能和美术需求支持时，再引入 Three.js 三维战场或独立客户端。
 
 Unity + URP 是需要独立桌面客户端、重度三维场景和编辑器美术流程时的备选。两条路线都通过相同协议连接 Java 进程，不把 Java 引擎移植成 C#。暂不要求安装 Unity。
 
@@ -51,7 +53,7 @@ Forge 独立 Java 进程拥有自动房间的全部规则状态；Node 服务管
 
 ## 本机构建
 
-已验证 Temurin 17.0.20.1 与 Maven 3.9.16。源码位于 `.local-tools/forge`，Maven 与依赖缓存同样放在 `.local-tools`，不提交到版本控制。源码检出需包含父工程声明的子模块目录，但实际构建仅选择 forge-game 及其依赖。
+已验证 Temurin 17.0.20.1 与 Maven 3.9.16。源码位于 `.local-tools/forge`，Maven 与依赖缓存同样放在 `.local-tools`，不提交到版本控制。源码检出需包含父工程声明的子模块目录；真人控制器需要构建 forge-gui 及其依赖。
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/构建Forge核心.ps1 -JdkHome "D:/Program Files/JDK"
@@ -59,7 +61,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/构建Forge核心.ps
 
 脚本核对固定 Git 提交，通过 Maven reactor 构建并运行测试；只在脚本执行期间设置 JAVA_HOME，不修改系统环境。可用 `-MavenPath` 和 `-ForgePath` 覆盖默认位置。代理使用调用环境的 MAVEN_OPTS，不在脚本内固定代理服务器。
 
-构建结果：Forge Parent / Core / Game 全部 SUCCESS；forge-game 测试 3 项，无失败、错误或跳过。产物为各模块 target 内的 JAR，不能当作已经提供网页对局服务的独立程序。下一阶段仍需初始化卡牌资源、实现玩家选择适配器、按玩家脱敏的快照与事件桥接。
+构建结果：Forge Parent / Core / Game / AI / GUI 全部 SUCCESS。产物为各模块 target 内的 JAR，不能当作已经提供网页对局服务的独立程序。下一阶段仍需验证卡牌资源初始化、玩家选择适配器、按玩家脱敏的快照与事件桥接。
 
 ## Node 到 Java 的验证入口
 
