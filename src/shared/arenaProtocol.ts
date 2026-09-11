@@ -3,7 +3,8 @@ import type { ForgePrompt } from './forgeTypes';
 
 export type ArenaCard = {id:string;name:string;ownerId:string;controllerId:string;kind:string;tapped:boolean;hidden:boolean;actionable:boolean;power?:number;toughness?:number;stackId?:string;ability?:boolean};
 export type ArenaPlayer = {id:string;name:string;life:number;libraryCount:number;handCount:number;hand:ArenaCard[];battlefield:ArenaCard[];graveyard:ArenaCard[];exile:ArenaCard[]};
-export type ArenaSnapshot = {players:ArenaPlayer[];stack:ArenaCard[];phase:string;activePlayerId:string|null;gameOver:boolean;lastEventSequence:number};
+export type ArenaCombat = {attackerId:string;blockerIds:string[];defenderPlayerId?:string;defenderCardId?:string};
+export type ArenaSnapshot = {players:ArenaPlayer[];stack:ArenaCard[];combat:ArenaCombat[];phase:string;activePlayerId:string|null;gameOver:boolean;lastEventSequence:number};
 export type ArenaEvent = {sequence:number;kind:string;data:{playerId?:string;cardId?:string;name?:string;from?:string;to?:string;before?:number;after?:number;tapped?:boolean;fizzled?:boolean}};
 export type ArenaRoomView = {matchId:string;code:string;playerId:string;seat:number;revision:number;status:'waiting'|'starting'|'playing'|'failed';snapshot:ArenaSnapshot|null;prompt:ForgePrompt|null;fullControl:boolean;error?:string};
 export type ArenaCredential = {code:string;playerId:string;token:string};

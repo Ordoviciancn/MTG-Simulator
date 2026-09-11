@@ -3,6 +3,7 @@ import type {ArenaCard,ArenaEvent,ArenaRoomView,ArenaServerMessage} from '../sha
 import type {Command} from '../shared/matchProtocol';
 import {ForgeControls} from './ForgeControls';
 import {SemanticCanvas} from './SemanticCanvas';
+import {CombatLines} from './CombatLines';
 import './forgeArena.css';
 
 const defaultDeck='20 Mountain\n20 Forest\n4 Lightning Bolt\n4 Shock\n4 Llanowar Elves\n4 Grizzly Bears\n4 Giant Growth';
@@ -72,7 +73,7 @@ export function ArenaClient(){
   },[room,pending,connected]);
   const state=room?.snapshot,you=state?.players.find(p=>p.id===room?.playerId),opponent=state?.players.find(p=>p.id!==room?.playerId);
   const canSelect=connected&&!pending&&room?.prompt?.kind==='input';
-  function cardNode(card:ArenaCard,style?:CSSProperties){return <button key={card.stackId??card.id} className={`forge-card ${card.tapped?'is-tapped':''} ${card.actionable&&canSelect?'is-actionable':''}`} style={style} data-card-id={card.id} title={card.name} draggable={!!canSelect} onDragStart={e=>{e.dataTransfer.setData('text/plain',card.id);setPreview(null);}} onMouseEnter={()=>setPreview(card)} onMouseLeave={()=>setPreview(null)} onFocus={()=>setPreview(card)} onBlur={()=>setPreview(null)} onClick={()=>selectCard(card)}>
+  function cardNode(card:ArenaCard,style?:CSSProperties){return <button key={card.stackId??card.id} className={`forge-card ${card.tapped?'is-tapped':''} ${card.actionable&&canSelect?'is-actionable':''} ${state?.combat?.some(a=>a.attackerId===card.id)?'is-attacking':''} ${state?.combat?.some(a=>a.blockerIds.includes(card.id))?'is-blocking':''}`} style={style} data-card-id={card.id} title={card.name} draggable={!!canSelect} onDragStart={e=>{e.dataTransfer.setData('text/plain',card.id);setPreview(null);}} onMouseEnter={()=>setPreview(card)} onMouseLeave={()=>setPreview(null)} onFocus={()=>setPreview(card)} onBlur={()=>setPreview(null)} onClick={()=>selectCard(card)}>
     <img src={imageUrl(card)} alt={card.name} draggable={false}/><span className="forge-card-name">{card.name}</span>{card.power!==undefined&&<strong className="forge-pt">{card.power}/{card.toughness}</strong>}
   </button>;}
   const prompt=room?.prompt?{...room.prompt,okLabel:label(room.prompt.okLabel??''),cancelLabel:label(room.prompt.cancelLabel??'')}:undefined;
@@ -83,12 +84,13 @@ export function ArenaClient(){
         <section className="forge-board" onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();const id=e.dataTransfer.getData('text/plain');const card=you?.hand.find(c=>c.id===id);if(card)selectCard(card);}}>
           <div className="forge-enemy-hand">{Array.from({length:opponent?.handCount??0},(_,i)=><img key={i} src="/mtg-card-back.png" alt="对手手牌" style={{transform:`rotate(${(i-((opponent?.handCount??1)-1)/2)*4}deg)`}}/>)}</div>
           {[opponent,you].map((p,index)=>p&&<section className={`forge-side ${index===0?'enemy':'self'}`} key={p.id}>
-            <button className={`forge-avatar ${state.activePlayerId===p.id?'active':''}`} onClick={()=>room.prompt&&command('selectPlayer',{requestId:room.prompt.requestId,playerId:p.id})}><span>{p.name}</span><strong>{p.life}</strong></button>
+            <button data-player-id={p.id} className={`forge-avatar ${state.activePlayerId===p.id?'active':''}`} onClick={()=>room.prompt&&command('selectPlayer',{requestId:room.prompt.requestId,playerId:p.id})}><span>{p.name}</span><strong>{p.life}</strong></button>
             <div className="forge-permanents">{p.battlefield.filter(c=>c.kind!=='land').map(c=>cardNode(c))}</div><div className="forge-lands">{p.battlefield.filter(c=>c.kind==='land').map(c=>cardNode(c))}</div>
             <aside className="forge-zones"><div className="forge-library"><img src="/mtg-card-back.png" alt="牌库"/><span>{p.libraryCount}</span></div>{(['graveyard','exile'] as const).map(z=><button key={z} onClick={()=>setZone({title:z==='graveyard'?'坟场':'放逐区',cards:p[z]})}>{z==='graveyard'?'坟场':'放逐'} <b>{p[z].length}</b></button>)}</aside>
           </section>)}
           <div className="forge-phase">{state.gameOver?'对局结束':phaseLabel(state.phase)}</div>
           <aside className="forge-stack" aria-label="堆叠">{state.stack.map(c=>cardNode(c))}</aside>
+          <CombatLines combat={state.combat??[]}/>
         </section>
         <div className="forge-hand" aria-label="手牌">{you?.hand.map((c,i)=>{const offset=i-(you.hand.length-1)/2;return cardNode(c,{'--fan-angle':`${Math.max(-13,Math.min(13,offset*3))}deg`,'--fan-y':`${Math.abs(offset)**1.6*2}px`,zIndex:i} as CSSProperties);})}</div>
         <fieldset className="forge-input" disabled={!connected||pending||room.status==='failed'||state.gameOver}><ForgeControls prompt={prompt} fullControl={room.fullControl} onControl={fullControl=>command('control',{fullControl})} onDecision={decision=>command(decision.type,{...decision})}/></fieldset>

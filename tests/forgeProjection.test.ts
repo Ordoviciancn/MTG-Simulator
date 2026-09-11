@@ -24,3 +24,10 @@ test('semantic projection allowlists public fields instead of serializing engine
   const event=projector.event({type:'semantic',sequence:7,kind:'zone',data:{from:'Library',to:'Hand',secret:'Counterspell',internalId:42}});
   assert.deepEqual(event,{sequence:7,kind:'zone',data:{from:'Library',to:'Hand'}});
 });
+
+test('combat references resolve only to cards present in the observer projection',()=>{
+  const projector=new ForgeProjection(0,()=>['A','B']);
+  const p=(id:number)=>({id,name:'Player',life:20,hand:[],handCount:0,libraryCount:50,battlefield:[{id:id+10,ownerId:id,name:'Grizzly Bears',kind:'creature'}],graveyard:[],exile:[]});
+  const view=projector.snapshot({type:'state',players:[p(0),p(1)],stack:[],phase:'COMBAT_DECLARE_BLOCKERS',activePlayerId:0,combat:[{attackerId:10,defenderPlayerId:1,blockerIds:[11,999]},{attackerId:998,blockerIds:[]}]});
+  assert.deepEqual(view.combat,[{attackerId:view.players[0].battlefield[0].id,defenderPlayerId:'B',defenderCardId:undefined,blockerIds:[view.players[1].battlefield[0].id]}]);
+});

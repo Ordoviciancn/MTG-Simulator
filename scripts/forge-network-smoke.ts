@@ -8,6 +8,7 @@ import type {Command,CommandReceipt} from '../src/shared/matchProtocol';
 
 process.env.FORGE_TEST_SEED='42';
 const complete=process.argv.includes('--complete');
+const combat=process.argv.includes('--combat');
 const server=createServer(),wss=new WebSocketServer({server}),rooms=createForgeRooms(process.cwd());
 wss.on('connection',rooms);server.listen(0,'127.0.0.1');await once(server,'listening');
 const port=(server.address() as {port:number}).port;
@@ -33,16 +34,18 @@ async function wait(condition:()=>unknown,timeout=20000){const start=Date.now();
 const clients=[new Client(),new Client(),new Client()];
 try {
   await Promise.all(clients.map(c=>once(c.ws,'open')));
-  clients[0].send({type:'create',name:'Human A',deckText:'30 Mountain\n30 Lightning Bolt'});await wait(()=>clients[0].credential);
+  const deckText=combat?'30 Forest\n30 Grizzly Bears':'30 Mountain\n30 Lightning Bolt';
+  clients[0].send({type:'create',name:'Human A',deckText});await wait(()=>clients[0].credential);
   const code=clients[0].credential!.code;
   clients[2].send({type:'resume',credential:{...clients[0].credential,token:'wrong'}});await wait(()=>clients[2].errors.length);
   assert.equal(clients[2].view,undefined);
-  clients[1].send({type:'join',code,name:'Human B',deckText:'30 Mountain\n30 Lightning Bolt'});
+  clients[1].send({type:'join',code,name:'Human B',deckText});
   await wait(()=>clients.some(c=>c.view?.prompt),120000);
-  let resolved=false,verifiedDuplicate=false;
-  for(let step=0;step<(complete?250:50)&&!resolved;step++){
-    await wait(()=>clients.slice(0,2).some(c=>c.view?.prompt)||clients.some(c=>complete?c.view?.snapshot?.gameOver:c.view?.snapshot?.players.some(p=>p.life===17)));
-    const damaged=clients.find(c=>complete?c.view?.snapshot?.gameOver:c.view?.snapshot?.players.some(p=>p.life===17));
+  let resolved=false,verifiedDuplicate=false,blocked=false,summoningChecked=false;
+  const done=(c:Client)=>combat?blocked&&c.view?.snapshot?.players.some(p=>p.life<20):complete?c.view?.snapshot?.gameOver:c.view?.snapshot?.players.some(p=>p.life===17);
+  for(let step=0;step<(complete||combat?250:50)&&!resolved;step++){
+    await wait(()=>clients.slice(0,2).some(c=>c.view?.prompt)||clients.some(done));
+    const damaged=clients.find(done);
     if(damaged){resolved=true;break;}
     const client=clients.slice(0,2).find(c=>c.view?.prompt)!;
     const room=client.view!,prompt=room.prompt!,state=room.snapshot!;
@@ -52,8 +55,14 @@ try {
     if(prompt.inputType==='InputPassPriority'){
       const own=state.players.find(p=>p.id===room.playerId)!;
       const name=own.battlefield.length?'Lightning Bolt':'Mountain';
-      const card=complete?(own.hand.find(c=>c.actionable&&c.name==='Mountain')??own.hand.find(c=>c.actionable&&c.name==='Lightning Bolt')):own.hand.find(c=>c.name===name);
+      const card=complete||combat?(own.hand.find(c=>c.actionable&&c.name===(combat?'Forest':'Mountain'))??own.hand.find(c=>c.actionable&&c.name===(combat?'Grizzly Bears':'Lightning Bolt'))):own.hand.find(c=>c.name===name);
       if(state.activePlayerId===room.playerId&&card){operation='selectCard';parameters.cardId=card.id;}
+    }else if(prompt.inputType==='InputAttack'){
+      if(!state.combat.length)operation='cancel';
+      else if(!summoningChecked){const creatures=state.players.find(p=>p.id===room.playerId)!.battlefield.filter(c=>c.kind==='creature');assert.ok(state.combat.length<creatures.length,'Newly cast creature must not attack with older creatures.');summoningChecked=true;}
+    }else if(prompt.inputType==='InputBlock'){
+      if(state.combat.some(attack=>attack.blockerIds.length))blocked=true;
+      if(!blocked){const blocker=state.players.find(p=>p.id===room.playerId)!.battlefield.find(c=>c.kind==='creature'&&!c.tapped);if(blocker){operation='selectCard';parameters.cardId=blocker.id;}}
     }else if(prompt.inputType==='InputSelectTargets'){
       operation='selectPlayer';parameters.playerId=state.players.find(p=>p.id!==room.playerId)!.id;
     }else if(prompt.kind==='choice'){
@@ -72,14 +81,15 @@ try {
     }
   }
   assert.equal(resolved,true);
-  await wait(()=>clients[0].view?.snapshot?.stack.length===0&&clients[0].view?.snapshot?.players.some(p=>p.graveyard.some(c=>c.name==='Lightning Bolt')));
+  await wait(()=>clients[0].view?.snapshot?.stack.length===0&&clients[0].view?.snapshot?.players.some(p=>p.graveyard.some(c=>c.name===(combat?'Grizzly Bears':'Lightning Bolt'))));
   assert.ok(clients[0].events.includes('life'));assert.ok(clients[0].events.includes('cast'));assert.ok(clients[0].events.includes('resolve'));
   const credential=clients[0].credential!,before=clients[0].view!.snapshot!;
   clients[0].ws.close();await once(clients[0].ws,'close');
   const resumed=new Client();clients.push(resumed);await once(resumed.ws,'open');resumed.send({type:'resume',credential});await wait(()=>resumed.view);
   assert.deepEqual(resumed.view!.snapshot?.players.map(p=>p.life),before.players.map(p=>p.life));
   assert.equal(resumed.view!.playerId,credential.playerId);
-  console.log(JSON.stringify({engine:'forge',networkSpellResolved:true,seatImpersonationRejected:true,duplicateReceiptStable:true,semanticEvents:true,reconnect:true,completedDamageMatch:complete,fullGameVerified:false}));
+  if(combat){assert.equal(blocked,true);assert.equal(summoningChecked,true);assert.ok(clients[0].events.includes('combat'));assert.ok(clients[0].view!.snapshot!.players.every(p=>p.graveyard.some(c=>c.name==='Grizzly Bears')));assert.ok(clients[0].view!.snapshot!.players.some(p=>p.life===18));}
+  console.log(JSON.stringify({engine:'forge',networkSpellResolved:!combat,combatBlockedAndDamaged:combat&&blocked,seatImpersonationRejected:true,duplicateReceiptStable:true,semanticEvents:true,reconnect:true,completedDamageMatch:complete,fullGameVerified:false}));
 }finally{
   for(const client of clients)client.ws.close();await rooms.close();wss.close();server.close();
 }

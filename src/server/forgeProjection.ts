@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { ArenaCard, ArenaEvent, ArenaSnapshot } from '../shared/arenaProtocol';
+import type { ArenaCard, ArenaCombat, ArenaEvent, ArenaSnapshot } from '../shared/arenaProtocol';
 import type { ForgeMessage } from './forgeProcess';
 
 type RawCard = {id:number;ownerId:number;controllerId?:number;name:string;kind:string;tapped?:boolean;actionable?:boolean;power?:number;toughness?:number;stackId?:number;ability?:boolean};
@@ -30,7 +30,12 @@ export class ForgeProjection {
     const stack=(message.stack as RawCard[]).map(card);
     for(const id of this.handles.keys())if(!seen.has(id))this.handles.delete(id);
     for(const id of this.stackHandles.keys())if(!stackSeen.has(id))this.stackHandles.delete(id);
-    return {players:projected,stack,phase:String(message.phase),activePlayerId:this.playerIds.get(Number(message.activePlayerId))??null,gameOver:message.gameOver===true,lastEventSequence:Number(message.lastEventSequence??0)};
+    const combat:ArenaCombat[]=[];
+    for(const raw of (message.combat??[]) as {attackerId:number;blockerIds:number[];defenderPlayerId?:number;defenderCardId?:number}[]){
+      const attackerId=this.handles.get(raw.attackerId);if(!attackerId)continue;
+      combat.push({attackerId,blockerIds:raw.blockerIds.map(id=>this.handles.get(id)).filter((id):id is string=>!!id),defenderPlayerId:this.playerIds.get(raw.defenderPlayerId!),defenderCardId:this.handles.get(raw.defenderCardId!)});
+    }
+    return {players:projected,stack,combat,phase:String(message.phase),activePlayerId:this.playerIds.get(Number(message.activePlayerId))??null,gameOver:message.gameOver===true,lastEventSequence:Number(message.lastEventSequence??0)};
   }
   event(message:ForgeMessage):ArenaEvent {
     const raw=message.data as Record<string,unknown>,data:ArenaEvent['data']={};
