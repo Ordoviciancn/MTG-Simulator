@@ -55,3 +55,4 @@ pnpm start
 
 - `pnpm forge:probe` 需要 JAVA_HOME 和已构建的 Forge，验证 Node/Java 进程及最小 Game 状态，不等同于完整对局或网页接入；相关变更需运行该验证。
 - `pnpm forge:human-smoke` 需要 JAVA_HOME 和 forge-gui 构建，验证双 Human Match 到达选择窗口与双座位视图；输出 `fullGameVerified:false`，不能作为完整对局验收。Java 用户目录与 APPDATA/LOCALAPPDATA 必须隔离到会话目录，退出后等待进程关闭再清理。
+- `pnpm forge:human-smoke --opening` 验证起手及出地；`--spell` 使用隔离测试种子验证闪电击目标、自动支付和伤害结算。测试种子禁止通过网络协议设置。

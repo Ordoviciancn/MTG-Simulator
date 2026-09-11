@@ -53,11 +53,16 @@ public final class ForgeHumanBridge {
         String message="";
         boolean okEnabled,cancelEnabled;
         String okLabel="OK",cancelLabel="Cancel";
+        Object inputIdentity;
         Seat(int index,Player player) { this.index=index;this.player=player;controller=(PlayerControllerHuman)player.getController(); }
         void input() {
-            requestId=Long.toString(IDS.incrementAndGet());
+            UI.execute(this::publishInput);
+        }
+        void publishInput() {
+            Object current=controller.getInputProxy().getInput();
+            if(requestId==null || current!=inputIdentity) { requestId=Long.toString(IDS.incrementAndGet());inputIdentity=current; }
             states();
-            emit(obj("type","prompt","seat",index,"requestId",requestId,"kind","input","message",message,"okEnabled",okEnabled,"cancelEnabled",cancelEnabled,"okLabel",okLabel,"cancelLabel",cancelLabel));
+            emit(obj("type","prompt","seat",index,"requestId",requestId,"kind","input","inputType",current==null?"":current.getClass().getSimpleName(),"message",message,"okEnabled",okEnabled,"cancelEnabled",cancelEnabled,"okLabel",okLabel,"cancelLabel",cancelLabel));
         }
         JsonElement choose(String message,List<?> choices,int min,int max) throws Exception {
             CompletableFuture<JsonElement> future=new CompletableFuture<>(); pending=future;
@@ -66,7 +71,7 @@ public final class ForgeHumanBridge {
             for(int i=0;i<choices.size();i++) options.add(obj("value",i,"label",String.valueOf(choices.get(i))));
             states();
             emit(obj("type","prompt","seat",index,"requestId",requestId,"kind","choice","message",message,"options",options,"min",min,"max",max));
-            try { return future.get(); } finally { pending=null; }
+            try { return future.get(); } finally { pending=null; requestId=null; }
         }
         List<?> chooseList(String message,List<?> choices,int min,int max) throws Exception {
             JsonElement answer=choose(message,choices,min,max);
@@ -125,13 +130,15 @@ public final class ForgeHumanBridge {
     }
     static void init(JsonObject input) {
         try {
+            String testSeed=System.getenv("FORGE_TEST_SEED");
+            if(testSeed!=null) forge.util.MyRandom.setRandom(new Random(Long.parseLong(testSeed)));
             List<RegisteredPlayer> players=new ArrayList<>();
             for(JsonElement entry:input.getAsJsonArray("players")) { JsonObject p=entry.getAsJsonObject();Deck deck=new Deck(p.get("name").getAsString());
                 for(JsonElement line:p.getAsJsonArray("deck")){JsonObject row=line.getAsJsonObject();String name=row.get("name").getAsString();var paper=FModel.getMagicDb().getCommonCards().getCard(name);if(paper==null)throw new IllegalArgumentException("Unknown Forge card: "+name);deck.getMain().add(paper,row.get("count").getAsInt());}
                 players.add(new RegisteredPlayer(deck).setPlayer(new LobbyPlayerHuman(p.get("name").getAsString()))); }
             if(players.size()!=2)throw new IllegalArgumentException("Exactly two players required");
             Match match=new Match(new GameRules(GameType.Constructed),players,"Tabletop Forge match");game=match.createGame();
-            for(int i=0;i<2;i++){Seat seat=new Seat(i,game.getPlayers().get(i));SEATS[i]=seat;seat.controller.setGui(proxy(IGuiGame.class,seat));seat.controller.setYieldPref(FPref.YIELD_AUTO_PASS_NO_ACTIONS,"true");}
+            for(int i=0;i<2;i++){Seat seat=new Seat(i,game.getPlayers().get(i));SEATS[i]=seat;seat.controller.setGui(proxy(IGuiGame.class,seat));seat.controller.getYieldController().setPref(FPref.YIELD_AUTO_PASS_NO_ACTIONS,"true");}
             match.startGame(game);states();emit(obj("type","event","message","Game finished"));
         } catch(Throwable e){fail(e);}
     }
@@ -139,7 +146,7 @@ public final class ForgeHumanBridge {
         String type=input.get("type").getAsString();
         if(type.equals("init")){if(initialized)throw new IllegalStateException("Already initialized");initialized=true;new Thread(()->init(input),"Forge match").start();return;}
         int index=input.get("seat").getAsInt();if(index<0||index>1||SEATS[index]==null)throw new IllegalArgumentException("Invalid seat");Seat seat=SEATS[index];
-        if(type.equals("control")){seat.controller.setYieldPref(FPref.YIELD_AUTO_PASS_NO_ACTIONS,Boolean.toString(!input.get("fullControl").getAsBoolean()));return;}
+        if(type.equals("control")){UI.execute(()->{String value=Boolean.toString(!input.get("fullControl").getAsBoolean());seat.controller.getYieldController().setPref(FPref.YIELD_AUTO_PASS_NO_ACTIONS,value);seat.controller.setYieldPref(FPref.YIELD_AUTO_PASS_NO_ACTIONS,value);});return;}
         if(!Objects.equals(seat.requestId,input.get("requestId").getAsString()))throw new IllegalArgumentException("Stale prompt");
         if(type.equals("choice")){if(seat.pending==null)throw new IllegalStateException("No modal choice");seat.pending.complete(input.get("value"));return;}
         UI.execute(()->{try{var inputProxy=seat.controller.getInputProxy();switch(type){case "ok":if(!seat.okEnabled)throw new IllegalStateException("OK disabled");inputProxy.selectButtonOK();break;case "cancel":if(!seat.cancelEnabled)throw new IllegalStateException("Cancel disabled");inputProxy.selectButtonCancel();break;case "selectCard":{int id=input.get("cardId").getAsInt();Card found=null;for(Card c:game.getCardsInGame())if(c.getId()==id)found=c;if(found==null||!found.getView().canBeShownTo(seat.player.getView()))throw new IllegalArgumentException("Card unavailable");inputProxy.selectCard(found.getView(),null,null);break;}case "selectPlayer":{int id=input.get("playerId").getAsInt();Player found=null;for(Player p:game.getPlayers())if(p.getId()==id)found=p;if(found==null)throw new IllegalArgumentException("Player unavailable");inputProxy.selectPlayer(found.getView(),null);break;}default:throw new IllegalArgumentException("Unknown command");}states();}catch(Throwable e){emit(obj("type","error","seat",index,"fatal",false,"message",e.toString()));}});
