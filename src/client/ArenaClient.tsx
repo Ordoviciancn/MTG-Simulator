@@ -4,6 +4,7 @@ import type {Command} from '../shared/matchProtocol';
 import {ForgeControls} from './ForgeControls';
 import {SemanticCanvas} from './SemanticCanvas';
 import {CombatLines} from './CombatLines';
+import {arenaKeyboardIntent} from './arenaKeyboard';
 import './forgeArena.css';
 
 const defaultDeck='20 Mountain\n20 Forest\n4 Lightning Bolt\n4 Shock\n4 Llanowar Elves\n4 Grizzly Bears\n4 Giant Growth';
@@ -67,12 +68,16 @@ export function ArenaClient(){
   function selectCard(card:ArenaCard){if(room?.prompt?.kind==='input')command('selectCard',{requestId:room.prompt.requestId,cardId:card.id});}
   useEffect(()=>{
     const key=(e:KeyboardEvent)=>{
-      if(e.target instanceof HTMLInputElement||e.target instanceof HTMLTextAreaElement||e.repeat)return;
-      if(e.code==='Space'&&room?.prompt?.okEnabled){e.preventDefault();command('ok',{requestId:room.prompt.requestId});}
-      if(e.key==='Escape'){setPreview(null);setZone(null);}
+      if(e.defaultPrevented)return;
+      const target=e.target instanceof Element?e.target:null;
+      const intent=arenaKeyboardIntent({key:e.key,code:e.code,repeat:e.repeat,composing:e.isComposing,modified:e.altKey||e.ctrlKey||e.metaKey||e.shiftKey,
+        interactive:!!target?.closest('button,input,textarea,select,a[href],[contenteditable]:not([contenteditable="false"]),[role="button"]'),
+        overlay:!!zone,ready:connected&&!pending&&room?.status==='playing'&&!room.snapshot?.gameOver,prompt:room?.prompt??undefined});
+      if(intent==='confirm'&&room?.prompt){e.preventDefault();command('ok',{requestId:room.prompt.requestId});}
+      if(intent==='dismiss'){e.preventDefault();setPreview(null);setZone(null);}
     };
     window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);
-  },[room,pending,connected]);
+  },[room,pending,connected,zone]);
   const state=room?.snapshot,you=state?.players.find(p=>p.id===room?.playerId),opponent=state?.players.find(p=>p.id!==room?.playerId);
   const canSelect=connected&&!pending&&room?.prompt?.kind==='input';
   function cardNode(card:ArenaCard,style?:CSSProperties){return <button key={card.stackId??card.id} className={`forge-card ${card.tapped?'is-tapped':''} ${card.actionable&&canSelect?'is-actionable':''} ${state?.combat?.some(a=>a.attackerId===card.id)?'is-attacking':''} ${state?.combat?.some(a=>a.blockerIds.includes(card.id))?'is-blocking':''}`} style={style} data-card-id={card.id} title={card.name} draggable={!!canSelect} onDragStart={e=>{e.dataTransfer.setData('text/plain',card.id);setPreview(null);}} onMouseEnter={()=>setPreview(card)} onMouseLeave={()=>setPreview(null)} onFocus={()=>setPreview(card)} onBlur={()=>setPreview(null)} onClick={()=>selectCard(card)}>
