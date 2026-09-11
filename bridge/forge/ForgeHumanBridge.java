@@ -155,6 +155,7 @@ public final class ForgeHumanBridge {
             if(event instanceof GameEventPlayerLivesChanged)kind="life";
             else if(event instanceof GameEventCardChangeZone)kind="zone";
             else if(event instanceof GameEventCardTapped)kind="tap";
+            else if(event instanceof GameEventCardDamaged)kind="damage";
             else if(event instanceof GameEventTurnPhase)kind="phase";
             else if(event instanceof GameEventSpellAbilityCast)kind="cast";
             else if(event instanceof GameEventSpellResolved)kind="resolve";
@@ -169,14 +170,16 @@ public final class ForgeHumanBridge {
                 if(event instanceof GameEventPlayerLivesChanged e)data=obj("playerId",e.player().getId(),"before",e.oldLives(),"after",e.newLives());
                 if(event instanceof GameEventTurnPhase e)data=obj("playerId",e.playerTurn().getId(),"phase",String.valueOf(e.phase()));
                 if(event instanceof GameEventCardTapped e){card=e.card();data.put("tapped",e.tapped());}
+                if(event instanceof GameEventCardDamaged e){card=e.card();data.put("amount",e.amount());}
                 if(event instanceof GameEventCardChangeZone e){
                     data.put("from",e.from()==null?null:String.valueOf(e.from().zoneType()));
                     data.put("to",e.to()==null?null:String.valueOf(e.to().zoneType()));
                     data.put("playerId",e.card().getOwner().getId());
                     card=e.card();
                 }
-                if(event instanceof GameEventSpellAbilityCast e){card=e.sa().getHostCard();data.put("stackId",e.si().getId());data.put("playerId",e.si().getActivatingPlayer().getId());}
+                if(event instanceof GameEventSpellAbilityCast e){card=e.sa().getHostCard();data.put("stackId",e.si().getId());data.put("playerId",e.si().getActivatingPlayer().getId());data.put("targetPlayerIds",e.si().getTargetPlayers().stream().map(PlayerView::getId).toList());data.put("targetCardIds",e.si().getTargetCards().stream().filter(c->c.canBeShownTo(seat.player.getView())).map(CardView::getId).toList());}
                 if(event instanceof GameEventSpellResolved e){card=e.spell().getHostCard();data.put("fizzled",e.hasFizzled());}
+                if(card!=null)data.putIfAbsent("playerId",card.getController().getId());
                 if(card!=null && card.canBeShownTo(seat.player.getView()) && (!card.isFaceDown() || card.mayPlayerLook(seat.player.getView()))) {
                     data.put("cardId",card.getId());data.put("name",card.getCurrentState().getName());
                 }

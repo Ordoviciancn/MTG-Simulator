@@ -41,8 +41,10 @@ export class ForgeProjection {
     const raw=message.data as Record<string,unknown>,data:ArenaEvent['data']={};
     if(typeof raw.playerId==='number')data.playerId=this.playerIds.get(raw.playerId);
     if(typeof raw.cardId==='number' && typeof raw.name==='string'){data.cardId=this.handle(raw.cardId);data.name=raw.name;}
-    for(const key of ['from','to'] as const)if(typeof raw[key]==='string')data[key]=raw[key];
-    for(const key of ['before','after'] as const)if(typeof raw[key]==='number')data[key]=raw[key];
+    for(const key of ['from','to','phase'] as const)if(typeof raw[key]==='string')data[key]=raw[key];
+    for(const key of ['before','after','amount'] as const)if(typeof raw[key]==='number')data[key]=raw[key];
+    if(Array.isArray(raw.targetPlayerIds))data.targetPlayerIds=raw.targetPlayerIds.map(id=>this.playerIds.get(id)).filter((id):id is string=>!!id);
+    if(Array.isArray(raw.targetCardIds))data.targetCardIds=raw.targetCardIds.map(id=>this.handles.get(id)).filter((id):id is string=>!!id);
     for(const key of ['tapped','fizzled'] as const)if(typeof raw[key]==='boolean')data[key]=raw[key];
     return {sequence:Number(message.sequence),kind:String(message.kind),data};
   }

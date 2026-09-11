@@ -16,6 +16,7 @@ export function ArenaClient(){
   const [name,setName]=useState('玩家'),[deck,setDeck]=useState(defaultDeck),[code,setCode]=useState('');
   const [pending,setPending]=useState(false),[events,setEvents]=useState<ArenaEvent[]>([]),[preview,setPreview]=useState<ArenaCard|null>(null);
   const [zone,setZone]=useState<{title:string;cards:ArenaCard[]}|null>(null);
+  const [animationSkip,setAnimationSkip]=useState(0),[animationSpeed,setAnimationSpeed]=useState(1),[animationBaseline,setAnimationBaseline]=useState({epoch:0,sequence:0});
   const socket=useRef<WebSocket|null>(null),roomRef=useRef(room),lastSequence=useRef(0),pendingCommand=useRef<{command:Command;sent:boolean}|null>(null);
   roomRef.current=room;
   useEffect(()=>{
@@ -28,13 +29,14 @@ export function ArenaClient(){
         const saved=sessionStorage.getItem('forge-seat');
         if(saved){try{ws.send(JSON.stringify({type:'resume',credential:JSON.parse(saved)}));}catch{sessionStorage.removeItem('forge-seat');}}
       };
+      let hydrated=false;
       ws.onmessage=e=>{
         const message=JSON.parse(e.data) as ArenaServerMessage;
         if(message.type==='credential'){sessionStorage.setItem('forge-seat',JSON.stringify(message.credential));}
         if(message.type==='view'){
           const first=roomRef.current?.matchId!==message.room.matchId;
           roomRef.current=message.room;setRoom(message.room);
-          if(first){lastSequence.current=message.room.snapshot?.lastEventSequence??0;setEvents([]);}
+          if(first||!hydrated){hydrated=true;lastSequence.current=message.room.snapshot?.lastEventSequence??0;setEvents([]);setAnimationBaseline(old=>({epoch:old.epoch+1,sequence:lastSequence.current}));}
           if(message.room.status==='failed')setPending(false);
           // A reconnect reuses the command ID; the server ledger decides whether it already ran.
           if(pendingCommand.current && !pendingCommand.current.sent){pendingCommand.current.sent=true;ws.send(JSON.stringify({type:'command',command:pendingCommand.current.command}));}
@@ -79,7 +81,7 @@ export function ArenaClient(){
   const prompt=room?.prompt?{...room.prompt,okLabel:label(room.prompt.okLabel??''),cancelLabel:label(room.prompt.cancelLabel??'')}:undefined;
   return <main className="forge-app">
     {!room?<section className="forge-lobby"><span className="forge-eyebrow">TABLETOP · ARENA</span><h1>进入对局</h1><p>双方就座后开始。无可用动作时自动让过，有选择时等待你的决定。</p><label>玩家名称<input value={name} onChange={e=>setName(e.target.value)} maxLength={64}/></label><label>牌表<textarea value={deck} onChange={e=>setDeck(e.target.value)} rows={9}/></label><button disabled={!connected} onClick={()=>send({type:'create',name,deckText:deck})}>创建对局</button><div className="forge-join"><input placeholder="房间码" value={code} onChange={e=>setCode(e.target.value)}/><button disabled={!connected||!code} onClick={()=>send({type:'join',code,name,deckText:deck})}>加入</button></div><small>{connected?'已连接':'正在连接…'}</small></section>:<>
-      <header className="forge-top"><span>对局 {room.code}</span><span>{connected?'已连接':'正在重新连接…'}</span><button onClick={()=>{sessionStorage.removeItem('forge-seat');location.reload();}}>离开</button></header>
+      <header className="forge-top"><span>对局 {room.code}</span><span>{connected?'已连接':'正在重新连接…'}</span><button onClick={()=>setAnimationSkip(value=>value+1)}>跳过动画</button><button onClick={()=>setAnimationSpeed(value=>value===1?2:1)}>动画 {animationSpeed}×</button><button onClick={()=>{sessionStorage.removeItem('forge-seat');location.reload();}}>离开</button></header>
       {!state?<section className="forge-wait"><h1>{room.status==='waiting'?'等待对手':'正在准备对局'}</h1><p>房间码：{room.code}</p></section>:<>
         <section className="forge-board" onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();const id=e.dataTransfer.getData('text/plain');const card=you?.hand.find(c=>c.id===id);if(card)selectCard(card);}}>
           <div className="forge-enemy-hand">{Array.from({length:opponent?.handCount??0},(_,i)=><img key={i} src="/mtg-card-back.png" alt="对手手牌" style={{transform:`rotate(${(i-((opponent?.handCount??1)-1)/2)*4}deg)`}}/>)}</div>
@@ -94,7 +96,7 @@ export function ArenaClient(){
         </section>
         <div className="forge-hand" aria-label="手牌">{you?.hand.map((c,i)=>{const offset=i-(you.hand.length-1)/2;return cardNode(c,{'--fan-angle':`${Math.max(-13,Math.min(13,offset*3))}deg`,'--fan-y':`${Math.abs(offset)**1.6*2}px`,zIndex:i} as CSSProperties);})}</div>
         <fieldset className="forge-input" disabled={!connected||pending||room.status==='failed'||state.gameOver}><ForgeControls prompt={prompt} fullControl={room.fullControl} onControl={fullControl=>command('control',{fullControl})} onDecision={decision=>command(decision.type,{...decision})}/></fieldset>
-        <SemanticCanvas events={events} ownPlayerId={room.playerId}/>
+        <SemanticCanvas key={`${room.matchId}:${animationBaseline.epoch}`} events={events} ownPlayerId={room.playerId} baseline={animationBaseline.sequence} skip={animationSkip} speed={animationSpeed}/>
         {preview&&!zone&&<div className="forge-preview"><img src={imageUrl(preview)} alt={preview.name}/></div>}
         {zone&&<div className="forge-modal" onClick={()=>setZone(null)}><section onClick={e=>e.stopPropagation()}><header><h2>{zone.title}</h2><button onClick={()=>setZone(null)}>关闭</button></header><div>{zone.cards.map(c=>cardNode(c))}</div></section></div>}
       </>}
