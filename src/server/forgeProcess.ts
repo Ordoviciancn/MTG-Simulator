@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 export type ForgeMessage = { type: string; [key: string]: unknown };
-export type ForgeLaunch = { executable: string; args: string[]; cwd: string; startupTimeoutMs?: number };
+export type ForgeLaunch = { executable: string; args: string[]; cwd: string; env?: NodeJS.ProcessEnv; startupTimeoutMs?: number };
 const PREFIX = 'FORGE_BRIDGE ';
 const MAX_LINE = 1024 * 1024;
 export class ForgeProcess {
@@ -11,7 +11,7 @@ export class ForgeProcess {
   readonly ready: Promise<void>;
   readonly exited: Promise<void>;
   constructor(launch: ForgeLaunch, onMessage: (message: ForgeMessage) => void, onFailure: (error: Error) => void) {
-    this.child = spawn(launch.executable, launch.args, { cwd: launch.cwd, windowsHide: true, stdio: 'pipe' });
+    this.child = spawn(launch.executable, launch.args, { cwd: launch.cwd, env: launch.env, windowsHide: true, stdio: 'pipe' });
     this.exited = new Promise(resolve => this.child.once('close', () => resolve()));
     this.ready = new Promise((resolve, reject) => {
       const timer = setTimeout(() => fail(new Error('Forge initialization timed out.')), launch.startupTimeoutMs ?? 60000);
