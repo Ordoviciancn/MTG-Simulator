@@ -5,7 +5,9 @@ import {ForgeControls} from './ForgeControls';
 import {SemanticCanvas} from './SemanticCanvas';
 import {CombatLines} from './CombatLines';
 import {arenaKeyboardIntent} from './arenaKeyboard';
+import {ArenaAtmosphere,AvatarCrest} from './ArenaAtmosphere';
 import './forgeArena.css';
+import './forgeArt.css';
 
 const defaultDeck='20 Mountain\n20 Forest\n4 Lightning Bolt\n4 Shock\n4 Llanowar Elves\n4 Grizzly Bears\n4 Giant Growth';
 const label=(value:string)=>({Play:'先手',Draw:'后手',Keep:'保留',Mulligan:'调度',Auto:'自动支付',OK:'确认','End Turn':'让过本回合',Cancel:'取消'}[value]??value);
@@ -85,13 +87,14 @@ export function ArenaClient(){
   </button>;}
   const prompt=room?.prompt?{...room.prompt,okLabel:label(room.prompt.okLabel??''),cancelLabel:label(room.prompt.cancelLabel??'')}:undefined;
   return <main className="forge-app">
+    <ArenaAtmosphere/>
     {!room?<section className="forge-lobby"><span className="forge-eyebrow">TABLETOP · ARENA</span><h1>进入对局</h1><p>双方就座后开始。无可用动作时自动让过，有选择时等待你的决定。</p><label>玩家名称<input value={name} onChange={e=>setName(e.target.value)} maxLength={64}/></label><label>牌表<textarea value={deck} onChange={e=>setDeck(e.target.value)} rows={9}/></label><button disabled={!connected} onClick={()=>send({type:'create',name,deckText:deck})}>创建对局</button><div className="forge-join"><input placeholder="房间码" value={code} onChange={e=>setCode(e.target.value)}/><button disabled={!connected||!code} onClick={()=>send({type:'join',code,name,deckText:deck})}>加入</button></div><small>{connected?'已连接':'正在连接…'}</small></section>:<>
       <header className="forge-top"><span>对局 {room.code}</span><span>{connected?'已连接':'正在重新连接…'}</span><button onClick={()=>setAnimationSkip(value=>value+1)}>跳过动画</button><button onClick={()=>setAnimationSpeed(value=>value===1?2:1)}>动画 {animationSpeed}×</button><button onClick={()=>{sessionStorage.removeItem('forge-seat');location.reload();}}>离开</button></header>
       {!state?<section className="forge-wait"><h1>{room.status==='waiting'?'等待对手':'正在准备对局'}</h1><p>房间码：{room.code}</p></section>:<>
         <section className="forge-board" onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();const id=e.dataTransfer.getData('text/plain');const card=you?.hand.find(c=>c.id===id);if(card)selectCard(card);}}>
           <div className="forge-enemy-hand">{Array.from({length:opponent?.handCount??0},(_,i)=><img key={i} src="/mtg-card-back.png" alt="对手手牌" style={{transform:`rotate(${(i-((opponent?.handCount??1)-1)/2)*4}deg)`}}/>)}</div>
           {[opponent,you].map((p,index)=>p&&<section className={`forge-side ${index===0?'enemy':'self'}`} key={p.id}>
-            <button data-player-id={p.id} className={`forge-avatar ${state.activePlayerId===p.id?'active':''}`} onClick={()=>room.prompt&&command('selectPlayer',{requestId:room.prompt.requestId,playerId:p.id})}><span>{p.name}</span><strong>{p.life}</strong></button>
+            <button data-player-id={p.id} className={`forge-avatar ${state.activePlayerId===p.id?'active':''}`} onClick={()=>room.prompt&&command('selectPlayer',{requestId:room.prompt.requestId,playerId:p.id})}><AvatarCrest/><span>{p.name}</span><strong>{p.life}</strong></button>
             <div className="forge-permanents">{p.battlefield.filter(c=>c.kind!=='land').map(c=>cardNode(c))}</div><div className="forge-lands">{p.battlefield.filter(c=>c.kind==='land').map(c=>cardNode(c))}</div>
             <aside className="forge-zones"><div className="forge-library"><img src="/mtg-card-back.png" alt="牌库"/><span>{p.libraryCount}</span></div>{(['graveyard','exile'] as const).map(z=><button key={z} onClick={()=>setZone({title:z==='graveyard'?'坟场':'放逐区',cards:p[z]})}>{z==='graveyard'?'坟场':'放逐'} <b>{p[z].length}</b></button>)}</aside>
           </section>)}
