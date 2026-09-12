@@ -40,3 +40,14 @@ test('spell animation targets expose only known observer references',()=>{
   assert.deepEqual(event.data,{targetPlayerIds:['B'],targetCardIds:[view.players[1].battlefield[0].id]});
   assert.equal(projector.resolveCard('998'),undefined);
 });
+
+test('new Forge game expires old card references while retaining public match score',()=>{
+  const projection=new ForgeProjection(0,()=>['A','B']);
+  const player=(id:number)=>({id,name:'Player',life:20,hand:[{id:10+id,ownerId:id,name:'Mountain',kind:'land'}],handCount:1,libraryCount:59,battlefield:[],graveyard:[],exile:[]});
+  const raw={type:'state',players:[player(0),player(1)],stack:[],phase:'MAIN1',activePlayerId:0,gameNumber:1,bestOf:3,scores:[0,0],coinWinnerSeat:1};
+  const first=projection.snapshot(raw),old=first.players[0].hand[0].id;
+  const second=projection.snapshot({...raw,gameNumber:2,scores:[0,1]});
+  assert.equal(projection.resolveCard(old),undefined);
+  assert.notEqual(second.players[0].hand[0].id,old);
+  assert.deepEqual(second.scores,[0,1]);assert.equal(second.coinWinnerSeat,1);assert.equal(second.players[1].hand.length,0);
+});

@@ -9,7 +9,7 @@ import { ForgeProjection } from './forgeProjection';
 import { prepareForgeLaunch } from './forgeRuntime';
 import { validateForgeDecision } from './forgeDecisions';
 
-type Member={id:string;token:string;name:string;deck:{name:string;count:number}[]};
+type Member={id:string;token:string;name:string;deck:{name:string;count:number}[];sideboard:{name:string;count:number}[]};
 const send=(socket:WebSocket,message:ArenaServerMessage)=>{
   if(socket.readyState!==WebSocket.OPEN)return;
   if(socket.bufferedAmount>2*1024*1024){socket.close(1013,'Client too slow');return;}
@@ -17,14 +17,18 @@ const send=(socket:WebSocket,message:ArenaServerMessage)=>{
 };
 function member(name:unknown,deckText:unknown):Member {
   if(typeof name!=='string'||!name.trim()||name.length>64||typeof deckText!=='string'||deckText.length>16000)throw new Error('姓名或牌表格式不正确。');
-  const deck=deckText.split(/\r?\n/).filter(line=>line.trim()).map(line=>{
-    const match=line.trim().match(/^(\d+)\s+(.+)$/);
-    if(!match)throw new Error('牌表每行格式为：数量 英文牌名。');
-    return {count:Number(match[1]),name:match[2].trim()};
-  });
-  const total=deck.reduce((sum,row)=>sum+row.count,0);
-  if(!deck.length||deck.some(row=>row.count<1||row.count>250)||total>250)throw new Error('牌表数量不正确，当前对局支持 1–250 张。');
-  return {id:randomUUID(),token:randomBytes(32).toString('hex'),name:name.trim(),deck};
+  const deck:{name:string;count:number}[]=[],sideboard:{name:string;count:number}[]=[];
+  let inSideboard=false;
+  for(const line of deckText.split(/\r?\n/).map(line=>line.trim()).filter(Boolean)){
+    if(/^(sideboard|备牌)\s*:?$/i.test(line)){inSideboard=true;continue;}
+    if(/^(deck|mainboard|主牌)\s*:?$/i.test(line)){inSideboard=false;continue;}
+    const row=line.match(/^(?:(SB):\s*)?(\d+)\s+(.+)$/i);
+    if(!row)throw new Error('牌表每行格式为：数量 英文牌名；备牌前添加 Sideboard。');
+    (inSideboard||row[1]?sideboard:deck).push({count:Number(row[2]),name:row[3].trim()});
+  }
+  const total=deck.reduce((sum,row)=>sum+row.count,0),sideTotal=sideboard.reduce((sum,row)=>sum+row.count,0);
+  if(!deck.length||[...deck,...sideboard].some(row=>row.count<1||row.count>250)||total>250||sideTotal>15)throw new Error('主牌支持 1–250 张，备牌最多 15 张。');
+  return {id:randomUUID(),token:randomBytes(32).toString('hex'),name:name.trim(),deck,sideboard};
 }
 
 class ForgeRoom {
@@ -43,7 +47,7 @@ class ForgeRoom {
   process?:ForgeProcess;
   cleanup?:()=>Promise<void>;
   expiry?:ReturnType<typeof setTimeout>;
-  constructor(readonly code:string,private root:string,private remove:()=>void){}
+  constructor(readonly code:string,private root:string,private remove:()=>void,readonly bestOf:1|3=1){}
   view(seat:number):ArenaRoomView {return {matchId:this.id,code:this.code,playerId:this.members[seat].id,seat,revision:this.revision,status:this.status,snapshot:this.snapshots[seat],prompt:this.prompts[seat],fullControl:this.fullControl[seat],error:this.error};}
   broadcast(){for(const [ws,seat] of this.clients)send(ws,{type:'view',room:this.view(seat)});}
   bind(ws:WebSocket,seat:number){
@@ -70,7 +74,7 @@ class ForgeRoom {
       const runtime=await prepareForgeLaunch(this.root,process.env.JAVA_HOME);this.cleanup=runtime.cleanup;
       this.process=new ForgeProcess(runtime.launch,message=>this.receive(message),error=>this.fail(error));
       await this.process.ready;
-      this.process.send({type:'init',players:this.members.map(p=>({name:p.name,deck:p.deck}))});
+      this.process.send({type:'init',bestOf:this.bestOf,players:this.members.map(p=>({name:p.name,deck:p.deck,sideboard:p.sideboard}))});
     }catch(error){this.fail(error as Error);}
   }
   private receive(message:ForgeMessage){
@@ -87,14 +91,14 @@ class ForgeRoom {
     if(message.type==='state'){
       this.snapshots[seat]=this.projections[seat].snapshot(message);this.status='playing';
     }else if(message.type==='prompt'){
-      if(!['input','choice','order','number','unsupported'].includes(String(message.kind)))throw new Error('Invalid Forge prompt.');
+      if(!['input','choice','order','number','sideboard','unsupported'].includes(String(message.kind)))throw new Error('Invalid Forge prompt.');
       const clean=(text:unknown)=>String(text??'').replace(/\s*\(\d+\)/g,'');
       const prompt:ForgePrompt={seat,requestId:String(message.requestId),kind:message.kind as ForgePrompt['kind'],message:clean(message.message)};
       if(typeof message.inputType==='string')prompt.inputType=message.inputType;
       for(const key of ['okEnabled','cancelEnabled'] as const)prompt[key]=message[key]===true;
       for(const key of ['okLabel','cancelLabel'] as const)prompt[key]=clean(message[key]);
       if(Array.isArray(message.options))prompt.options=message.options.map(option=>({value:Number(option.value),label:clean(option.label)}));
-      if(typeof message.min==='number')prompt.min=message.min;if(typeof message.max==='number')prompt.max=message.max;
+      if(typeof message.initialMainSize==='number')prompt.initialMainSize=message.initialMainSize; if(typeof message.min==='number')prompt.min=message.min;if(typeof message.max==='number')prompt.max=message.max;
       if(JSON.stringify(this.prompts[seat])===JSON.stringify(prompt))return;
       this.prompts[seat]=prompt;
     }else if(message.type==='promptClosed')this.prompts[seat]=null;
@@ -105,11 +109,11 @@ class ForgeRoom {
   async command(seat:number,command:Command):Promise<CommandReceipt>{
     return this.ledger.submit(command,this.members[seat].id,()=>this.revision,async command=>{
       const reject=():CommandReceipt=>({commandId:command.commandId,revision:this.revision,status:'rejected',code:'protocol'});
-      if(this.status!=='playing'||this.snapshots[seat]?.gameOver||!this.process||!command.parameters||typeof command.parameters!=='object')return reject();
+      if(this.status!=='playing'||this.snapshots[seat]?.matchOver||!this.process||!command.parameters||typeof command.parameters!=='object')return reject();
       const args=command.parameters;
       const engine:ForgeMessage={type:command.operation,seat,commandId:randomUUID()};
       const prompt=this.prompts[seat];
-      if(command.operation==='control'){
+      if(command.operation==='concede'){if(this.snapshots[seat]?.gameOver||this.prompts.some(p=>p&&p.kind!=='input'))return reject();}else if(command.operation==='control'){
         if(typeof args.fullControl!=='boolean')return reject();engine.fullControl=args.fullControl;
       }else{
         const decision:ForgeDecision={type:command.operation as ForgeDecision['type'],requestId:String(args.requestId??'')};
@@ -148,7 +152,7 @@ export function createForgeRooms(root:string){
           if(message.type==='create'){
             if(rooms.size>=8)throw new Error('对局数量已达上限。');
             let code:string;do{code=randomBytes(4).toString('hex').toUpperCase();}while(rooms.has(code));
-            room=new ForgeRoom(code,root,()=>rooms.delete(code));rooms.set(code,room);
+            room=new ForgeRoom(code,root,()=>rooms.delete(code),message.bestOf===3?3:1);rooms.set(code,room);
           }else{
             const existing=rooms.get(String(message.code).trim().toUpperCase());
             if(!existing||existing.members.length!==1||existing.status!=='waiting')throw new Error('房间不存在或已满。');room=existing;

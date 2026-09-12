@@ -62,6 +62,11 @@ pnpm start
 - `pnpm forge:network-smoke --x` 验证 Blaze 的 X=1、两块山脉支付、伤害、越界数值拒绝和数值窗口中的独立完全操控切换；数值选择不得由优先权确认替代。
 - `pnpm forge:network-smoke --scry` 验证 Preordain 占卜的可选移底、牌库顶排序和实际抽牌。Java 使用 Forge 的列表选择界面路径，私密选项只路由给所属座位；引擎原始异常留在服务端，不广播可能包含私密卡名的异常文本。
 - Forge 房间凭据由服务端随机生成，浏览器按标签页保存；客户端自报 playerId 不能代替座位凭据。外部卡牌引用按观察者分配，离开可见区域后失效。
+- 新建界面默认 BO3，协议未指定 bestOf 时仍为 BO1。`pnpm forge:bo3-smoke` 验证真实三局、四次私密换备、比分与换入牌抓取；首局 Forge 投币获胜者选择先后手，后续由上一局败者选择。备牌可用 Sideboard 分节或 SB: 前缀导入；换备沿用 Forge 顺序调用。
+- `pnpm forge:network-smoke --manland` 验证米斯拉的工厂活化为 2/2。展示分区按当前生物类型优先于地类型，规则身份仍由 Forge 保留。
+- 牌桌根容器使用 overflow:clip，避免浏览器聚焦底部手牌时程序性滚动导致牌手徽章跳动。`useCardDrag.ts` 只负责指针表现，合法出牌仍交给 Forge。
+- `desktop/` 管理 Electron 宿主和打包。`pnpm desktop:build` 输出 `release/MTG Simulator-win32-x64/MTG Simulator.exe`，须保留整个目录；构建输出不提交。`pnpm desktop:dev` 启动开发桌面。运行需要外部固定版本 Forge 工作区、JDK 和 Git，配置见 `desktop/桌面版说明.md`。
+- 桌面进程通过 FORGE_WORKSPACE_ROOT、JAVA_HOME 指定运行库，HOST=127.0.0.1/PORT=0 分配独立本机服务；渲染器使用沙箱和上下文隔离。MTG_DESKTOP_SMOKE 输出仅证明宿主服务与页面渲染，不替代 Java 对局测试。
 - 新客户端动画入口为 `SemanticCanvas.tsx`，只消费 Forge 语义事件。当前 Java 崩溃时冻结房间，不声称可恢复崩溃前引擎状态。
 - Forge 客户端装饰层为 `ArenaAtmosphere.tsx` 与 `forgeArt.css`，后者在基础布局样式之后加载。环境光与徽章不接收指针事件；环境装饰不得读取或推断游戏规则，减少动态效果偏好下关闭漂浮微光。
 - `animationTimeline.ts` 管理语义事件序号、并行动画、倍速与跳过；重连以快照事件序号重新建立基线。后台标签页与减少动态效果偏好消费事件但不积压视觉效果，任何动画控制不得发送规则指令。

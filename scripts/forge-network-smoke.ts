@@ -11,6 +11,7 @@ const complete=process.argv.includes('--complete');
 const combat=process.argv.includes('--combat');
 const numeric=process.argv.includes('--x');
 const scry=process.argv.includes('--scry');
+const manland=process.argv.includes('--manland');
 const server=createServer(),wss=new WebSocketServer({server}),rooms=createForgeRooms(process.cwd());
 wss.on('connection',rooms);server.listen(0,'127.0.0.1');await once(server,'listening');
 const port=(server.address() as {port:number}).port;
@@ -36,7 +37,7 @@ async function wait(condition:()=>unknown,timeout=20000){const start=Date.now();
 const clients=[new Client(),new Client(),new Client()];
 try {
   await Promise.all(clients.map(c=>once(c.ws,'open')));
-  const spellName=scry?'Preordain':numeric?'Blaze':combat?'Grizzly Bears':'Lightning Bolt';
+  const spellName=manland?"Mishra's Factory":scry?'Preordain':numeric?'Blaze':combat?'Grizzly Bears':'Lightning Bolt';
   const landName=scry?'Island':combat?'Forest':'Mountain';
   const deckText=`30 ${landName}\n30 ${spellName}`;
   clients[0].send({type:'create',name:'Human A',deckText});await wait(()=>clients[0].credential);
@@ -47,7 +48,7 @@ try {
   await wait(()=>clients.some(c=>c.view?.prompt),120000);
   let resolved=false,verifiedDuplicate=false,blocked=false,summoningChecked=false,numericChosen=false;
   let ordered:{seat:number;name:string;handIds:string[]}|undefined;
-  const done=(c:Client)=>scry?ordered&&c.view?.seat===ordered.seat&&c.view.snapshot?.players[ordered.seat].hand.some(card=>!ordered!.handIds.includes(card.id))&&c.view.snapshot.players[ordered.seat].graveyard.some(card=>card.name===spellName):combat?blocked&&c.view?.snapshot?.players.some(p=>p.life<20):complete?c.view?.snapshot?.gameOver:c.view?.snapshot?.players.some(p=>p.life===(numeric?19:17));
+  const done=(c:Client)=>manland?c.view?.snapshot?.players.some(p=>p.battlefield.some(card=>card.name===spellName&&card.kind==='creature')):scry?ordered&&c.view?.seat===ordered.seat&&c.view.snapshot?.players[ordered.seat].hand.some(card=>!ordered!.handIds.includes(card.id))&&c.view.snapshot.players[ordered.seat].graveyard.some(card=>card.name===spellName):combat?blocked&&c.view?.snapshot?.players.some(p=>p.life<20):complete?c.view?.snapshot?.gameOver:c.view?.snapshot?.players.some(p=>p.life===(numeric?19:17));
   for(let step=0;step<(complete||combat?250:50)&&!resolved;step++){
     await wait(()=>clients.slice(0,2).some(c=>c.view?.prompt)||clients.some(done));
     const damaged=clients.find(done);
@@ -60,7 +61,7 @@ try {
     if(prompt.inputType==='InputPassPriority'){
       const own=state.players.find(p=>p.id===room.playerId)!;
       const name=own.battlefield.length?'Lightning Bolt':'Mountain';
-      const card=complete||combat||numeric||scry?(own.hand.find(c=>c.actionable&&c.name===landName)??own.hand.find(c=>c.actionable&&c.name===spellName&&(!numeric||own.battlefield.filter(c=>c.kind==='land'&&!c.tapped).length>=2))):own.hand.find(c=>c.name===name);
+      const card=manland?(own.battlefield.length>=2?own.battlefield.find(c=>c.name===spellName):own.hand.find(c=>c.actionable&&c.name===(own.battlefield.some(c=>c.name===landName)?spellName:landName))):complete||combat||numeric||scry?(own.hand.find(c=>c.actionable&&c.name===landName)??own.hand.find(c=>c.actionable&&c.name===spellName&&(!numeric||own.battlefield.filter(c=>c.kind==='land'&&!c.tapped).length>=2))):own.hand.find(c=>c.name===name);
       if(state.activePlayerId===room.playerId&&card){operation='selectCard';parameters.cardId=card.id;}
     }else if(prompt.inputType==='InputAttack'){
       if(!state.combat.length)operation='cancel';
@@ -84,6 +85,8 @@ try {
       ordered={seat:room.seat,name:prompt.options![1].label,handIds:state.players[room.seat].hand.map(c=>c.id)};
     }else if(scry&&prompt.kind==='choice'&&prompt.min===0){
       assert.equal(prompt.max,2);operation='choice';parameters.value=[];
+    }else if(manland&&prompt.kind==='choice'){
+      const option=prompt.options?.find(o=>/becomes.*creature/i.test(o.label));assert.ok(option,JSON.stringify(prompt));operation='choice';parameters.value=option.value;
     }else if(prompt.kind==='choice'){
       assert.equal(prompt.options?.length,1);operation='choice';parameters.value=prompt.options![0].value;
     }else assert.ok(prompt.okEnabled,JSON.stringify(prompt));
@@ -100,6 +103,11 @@ try {
     }
   }
   assert.equal(resolved,true);
+  if(manland){
+    const creature=clients[0].view!.snapshot!.players.flatMap(p=>p.battlefield).find(c=>c.name===spellName&&c.kind==='creature');
+    assert.ok(creature);assert.equal(creature.power,2);assert.equal(creature.toughness,2);
+    console.log(JSON.stringify({engine:'forge',animatedLandClassifiedAsCreature:true,fullGameVerified:false}));
+  }else{
   await wait(()=>clients[0].view?.snapshot?.stack.length===0&&clients[0].view?.snapshot?.players.some(p=>p.graveyard.some(c=>c.name===spellName)));
   if(!scry)assert.ok(clients[0].events.includes('life'));assert.ok(clients[0].events.includes('cast'));assert.ok(clients[0].events.includes('resolve'));
   const credential=clients[0].credential!,before=clients[0].view!.snapshot!;
@@ -111,6 +119,7 @@ try {
   if(numeric){assert.equal(numericChosen,true);assert.ok(before.players.some(p=>p.battlefield.filter(c=>c.tapped&&c.kind==='land').length===2));}
   if(scry){assert.ok(ordered);assert.equal(clients[ordered.seat].view!.snapshot!.players[ordered.seat].hand.find(c=>!ordered!.handIds.includes(c.id))?.name,ordered.name);}
   console.log(JSON.stringify({engine:'forge',networkSpellResolved:!combat,combatBlockedAndDamaged:combat&&blocked,xValuePaidAndResolved:numeric&&numericChosen,scryOrderedAndDrawn:scry&&!!ordered,seatImpersonationRejected:true,duplicateReceiptStable:true,semanticEvents:true,reconnect:true,completedDamageMatch:complete,fullGameVerified:false}));
+  }
 }finally{
   for(const client of clients)client.ws.close();await rooms.close();wss.close();server.close();
 }

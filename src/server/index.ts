@@ -60,7 +60,7 @@ const app = express();
 const server = createServer(app);
 const wss = new WebSocketServer({ server });
 const rooms = new Map<string, Room>();
-const connectForge=createForgeRooms(path.resolve(__dirname,'../..'));
+const connectForge=createForgeRooms(process.env.FORGE_WORKSPACE_ROOT || path.resolve(__dirname,'../..'));
 const publicZoneIds: PublicZoneId[] = ["battlefield", "graveyard", "exile", "stack"];
 
 const orderedPhases = [
@@ -942,6 +942,6 @@ function libraryPositionName(position: LibraryPosition) {
 }
 
 const port = Number(process.env.PORT ?? 8787);
-server.listen(port, () => {
+server.listen({port,...(process.env.HOST?{host:process.env.HOST}:{})}, () => {
   console.log(`MTG Tabletop server listening on http://127.0.0.1:${port}`);
 });

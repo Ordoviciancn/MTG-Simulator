@@ -1,4 +1,4 @@
-import {useEffect,useRef,useState,type CSSProperties} from 'react';
+import {useCallback,useEffect,useRef,useState,type CSSProperties} from 'react';
 import type {ArenaCard,ArenaEvent,ArenaRoomView,ArenaServerMessage} from '../shared/arenaProtocol';
 import type {Command} from '../shared/matchProtocol';
 import {ForgeControls} from './ForgeControls';
@@ -6,6 +6,8 @@ import {SemanticCanvas} from './SemanticCanvas';
 import {CombatLines} from './CombatLines';
 import {arenaKeyboardIntent} from './arenaKeyboard';
 import {ArenaAtmosphere,AvatarCrest} from './ArenaAtmosphere';
+import {useCardDrag} from './useCardDrag';
+import {CoinToss} from './CoinToss';
 import './forgeArena.css';
 import './forgeArt.css';
 
@@ -17,6 +19,7 @@ const imageUrl=(card:ArenaCard)=>card.hidden?'/mtg-card-back.png':`https://api.s
 export function ArenaClient(){
   const [room,setRoom]=useState<ArenaRoomView|null>(null),[connected,setConnected]=useState(false),[error,setError]=useState('');
   const [name,setName]=useState('玩家'),[deck,setDeck]=useState(defaultDeck),[code,setCode]=useState('');
+  const [bestOf,setBestOf]=useState<1|3>(3),[coinDone,setCoinDone]=useState<string|null>(null);
   const [pending,setPending]=useState(false),[events,setEvents]=useState<ArenaEvent[]>([]),[preview,setPreview]=useState<ArenaCard|null>(null);
   const [zone,setZone]=useState<{title:string;cards:ArenaCard[]}|null>(null);
   const [animationSkip,setAnimationSkip]=useState(0),[animationSpeed,setAnimationSpeed]=useState(1),[animationBaseline,setAnimationBaseline]=useState({epoch:0,sequence:0});
@@ -63,7 +66,7 @@ export function ArenaClient(){
   },[]);
   function send(value:unknown){if(socket.current?.readyState===WebSocket.OPEN){setError('');socket.current.send(JSON.stringify(value));}}
   function command(operation:string,parameters:Record<string,unknown>={}){
-    if(!room||pending||!connected||room.status!=='playing')return;
+    if(!room||pending||!connected||room.status!=='playing'||coinPending)return;
     const command:Command={protocolVersion:1,matchId:room.matchId,playerId:room.playerId,commandId:crypto.randomUUID(),expectedRevision:room.revision,operation,parameters};
     pendingCommand.current={command,sent:true};setPending(true);send({type:'command',command});
   }
@@ -74,27 +77,33 @@ export function ArenaClient(){
       const target=e.target instanceof Element?e.target:null;
       const intent=arenaKeyboardIntent({key:e.key,code:e.code,repeat:e.repeat,composing:e.isComposing,modified:e.altKey||e.ctrlKey||e.metaKey||e.shiftKey,
         interactive:!!target?.closest('button,input,textarea,select,a[href],[contenteditable]:not([contenteditable="false"]),[role="button"]'),
-        overlay:!!zone,ready:connected&&!pending&&room?.status==='playing'&&!room.snapshot?.gameOver,prompt:room?.prompt??undefined});
+        overlay:!!zone||coinPending,ready:connected&&!pending&&room?.status==='playing'&&!room.snapshot?.gameOver,prompt:room?.prompt??undefined});
       if(intent==='confirm'&&room?.prompt){e.preventDefault();command('ok',{requestId:room.prompt.requestId});}
       if(intent==='dismiss'){e.preventDefault();setPreview(null);setZone(null);}
     };
     window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);
-  },[room,pending,connected,zone]);
+  },[room,pending,connected,zone,coinDone]);
   const state=room?.snapshot,you=state?.players.find(p=>p.id===room?.playerId),opponent=state?.players.find(p=>p.id!==room?.playerId);
-  const canSelect=connected&&!pending&&room?.prompt?.kind==='input';
-  function cardNode(card:ArenaCard,style?:CSSProperties){return <button key={card.stackId??card.id} className={`forge-card ${card.tapped?'is-tapped':''} ${card.actionable&&canSelect?'is-actionable':''} ${state?.combat?.some(a=>a.attackerId===card.id)?'is-attacking':''} ${state?.combat?.some(a=>a.blockerIds.includes(card.id))?'is-blocking':''}`} style={style} data-card-id={card.id} title={card.name} draggable={!!canSelect} onDragStart={e=>{e.dataTransfer.setData('text/plain',card.id);setPreview(null);}} onMouseEnter={()=>setPreview(card)} onMouseLeave={()=>setPreview(null)} onFocus={()=>setPreview(card)} onBlur={()=>setPreview(null)} onClick={()=>selectCard(card)}>
+  const coinPending=!!room&&state?.gameNumber===1&&state.phase==='null'&&state.coinWinnerSeat!=null&&coinDone!==room.matchId;
+  const finishCoin=useCallback(()=>setCoinDone(room?.matchId??null),[room?.matchId]);
+  const canSelect=connected&&!pending&&!coinPending&&room?.prompt?.kind==='input';
+  const cardDrag=useCardDrag(!!canSelect,selectCard);
+  function cardNode(card:ArenaCard,style?:CSSProperties){return <button key={card.stackId??card.id} className={`forge-card ${cardDrag.drag?.card.id===card.id?'is-drag-origin':''} ${card.tapped?'is-tapped':''} ${card.actionable&&canSelect?'is-actionable':''} ${state?.combat?.some(a=>a.attackerId===card.id)?'is-attacking':''} ${state?.combat?.some(a=>a.blockerIds.includes(card.id))?'is-blocking':''}`} style={style} data-card-id={card.id} title={card.name} draggable={false} onPointerDown={e=>{if(you?.hand.some(c=>c.id===card.id)){cardDrag.begin(e,card);setPreview(null);}}} onMouseEnter={()=>{if(!cardDrag.drag)setPreview(card);}} onMouseLeave={()=>setPreview(null)} onFocus={()=>setPreview(card)} onBlur={()=>setPreview(null)} onClick={()=>{if(!cardDrag.consumeClick())selectCard(card);}}>
     <img src={imageUrl(card)} alt={card.name} draggable={false}/><span className="forge-card-name">{card.name}</span>{card.power!==undefined&&<strong className="forge-pt">{card.power}/{card.toughness}</strong>}
   </button>;}
   const prompt=room?.prompt?{...room.prompt,okLabel:label(room.prompt.okLabel??''),cancelLabel:label(room.prompt.cancelLabel??'')}:undefined;
   return <main className="forge-app">
     <ArenaAtmosphere/>
-    {!room?<section className="forge-lobby"><span className="forge-eyebrow">TABLETOP · ARENA</span><h1>进入对局</h1><p>双方就座后开始。无可用动作时自动让过，有选择时等待你的决定。</p><label>玩家名称<input value={name} onChange={e=>setName(e.target.value)} maxLength={64}/></label><label>牌表<textarea value={deck} onChange={e=>setDeck(e.target.value)} rows={9}/></label><button disabled={!connected} onClick={()=>send({type:'create',name,deckText:deck})}>创建对局</button><div className="forge-join"><input placeholder="房间码" value={code} onChange={e=>setCode(e.target.value)}/><button disabled={!connected||!code} onClick={()=>send({type:'join',code,name,deckText:deck})}>加入</button></div><small>{connected?'已连接':'正在连接…'}</small></section>:<>
+    {cardDrag.drag&&<div className={`forge-drag-card ${cardDrag.drag.returning?'returning':''}`} aria-hidden="true" style={{left:cardDrag.drag.originX+cardDrag.drag.x-cardDrag.drag.startX,top:cardDrag.drag.originY+cardDrag.drag.y-cardDrag.drag.startY,width:cardDrag.drag.width,height:cardDrag.drag.height}}><img src={imageUrl(cardDrag.drag.card)} alt=""/><i/></div>}
+    {!room?<section className="forge-lobby"><span className="forge-eyebrow">TABLETOP · ARENA</span><h1>进入对局</h1><p>双方就座后开始。无可用动作时自动让过，有选择时等待你的决定。</p><label>玩家名称<input value={name} onChange={e=>setName(e.target.value)} maxLength={64}/></label><label>赛制<select value={bestOf} onChange={e=>setBestOf(Number(e.target.value) as 1|3)}><option value={3}>BO3 · 两胜制，局间换备</option><option value={1}>BO1 · 单局</option></select></label><label>牌表<textarea value={deck} onChange={e=>setDeck(e.target.value)} rows={7}/></label><small>备牌以单独一行 Sideboard 开始，随后填写数量和英文牌名。</small><button disabled={!connected} onClick={()=>send({type:'create',name,deckText:deck,bestOf})}>创建对局</button><div className="forge-join"><input placeholder="房间码" value={code} onChange={e=>setCode(e.target.value)}/><button disabled={!connected||!code} onClick={()=>send({type:'join',code,name,deckText:deck})}>加入</button></div><small>{connected?'已连接':'正在连接…'}</small></section>:<>
       <header className="forge-top"><span>对局 {room.code}</span><span>{connected?'已连接':'正在重新连接…'}</span><button onClick={()=>setAnimationSkip(value=>value+1)}>跳过动画</button><button onClick={()=>setAnimationSpeed(value=>value===1?2:1)}>动画 {animationSpeed}×</button><button onClick={()=>{sessionStorage.removeItem('forge-seat');location.reload();}}>离开</button></header>
+      {state?.bestOf===3&&<div className="forge-match-score">BO3 · 第 {state.gameNumber} 局 · {you?.name} {state.scores?.[room.seat]??0} : {state.scores?.[1-room.seat]??0} {opponent?.name}{state.matchOver?' · 比赛结束':''}</div>}
+      {coinPending&&<CoinToss winner={state!.players[state!.coinWinnerSeat!]?.name??'牌手'} onComplete={finishCoin}/>}
       {!state?<section className="forge-wait"><h1>{room.status==='waiting'?'等待对手':'正在准备对局'}</h1><p>房间码：{room.code}</p></section>:<>
         <section className="forge-board" onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();const id=e.dataTransfer.getData('text/plain');const card=you?.hand.find(c=>c.id===id);if(card)selectCard(card);}}>
           <div className="forge-enemy-hand">{Array.from({length:opponent?.handCount??0},(_,i)=><img key={i} src="/mtg-card-back.png" alt="对手手牌" style={{transform:`rotate(${(i-((opponent?.handCount??1)-1)/2)*4}deg)`}}/>)}</div>
           {[opponent,you].map((p,index)=>p&&<section className={`forge-side ${index===0?'enemy':'self'}`} key={p.id}>
-            <button data-player-id={p.id} className={`forge-avatar ${state.activePlayerId===p.id?'active':''}`} onClick={()=>room.prompt&&command('selectPlayer',{requestId:room.prompt.requestId,playerId:p.id})}><AvatarCrest/><span>{p.name}</span><strong>{p.life}</strong></button>
+            <button data-player-id={p.id} className={`forge-avatar ${state.activePlayerId===p.id?'active':''}`} onClick={()=>room.prompt&&command('selectPlayer',{requestId:room.prompt.requestId,playerId:p.id})}><AvatarCrest/><img className="forge-avatar-portrait" src="/art/avatar-spellblade.png" alt="" draggable={false}/><span>{p.name}</span><strong>{p.life}</strong></button>
             <div className="forge-permanents">{p.battlefield.filter(c=>c.kind!=='land').map(c=>cardNode(c))}</div><div className="forge-lands">{p.battlefield.filter(c=>c.kind==='land').map(c=>cardNode(c))}</div>
             <aside className="forge-zones"><div className="forge-library"><img src="/mtg-card-back.png" alt="牌库"/><span>{p.libraryCount}</span></div>{(['graveyard','exile'] as const).map(z=><button key={z} onClick={()=>setZone({title:z==='graveyard'?'坟场':'放逐区',cards:p[z]})}>{z==='graveyard'?'坟场':'放逐'} <b>{p[z].length}</b></button>)}</aside>
           </section>)}
@@ -103,9 +112,9 @@ export function ArenaClient(){
           <CombatLines combat={state.combat??[]}/>
         </section>
         <div className="forge-hand" aria-label="手牌">{you?.hand.map((c,i)=>{const offset=i-(you.hand.length-1)/2;return cardNode(c,{'--fan-angle':`${Math.max(-13,Math.min(13,offset*3))}deg`,'--fan-y':`${Math.abs(offset)**1.6*2}px`,zIndex:i} as CSSProperties);})}</div>
-        <fieldset className="forge-input" disabled={!connected||pending||room.status==='failed'||state.gameOver}><ForgeControls prompt={prompt} fullControl={room.fullControl} onControl={fullControl=>command('control',{fullControl})} onDecision={decision=>command(decision.type,{...decision})}/></fieldset>
+        <fieldset className={`forge-input ${prompt?.kind==='sideboard'?'forge-sideboard-input':''}`} disabled={!connected||pending||coinPending||room.status==='failed'||state.gameOver}><ForgeControls prompt={prompt} fullControl={room.fullControl} onControl={fullControl=>command('control',{fullControl})} onDecision={decision=>command(decision.type,{...decision})}/></fieldset>
         <SemanticCanvas key={`${room.matchId}:${animationBaseline.epoch}`} events={events} ownPlayerId={room.playerId} baseline={animationBaseline.sequence} skip={animationSkip} speed={animationSpeed}/>
-        {preview&&!zone&&<div className="forge-preview"><img src={imageUrl(preview)} alt={preview.name}/></div>}
+        {preview&&!zone&&!cardDrag.drag&&<div className="forge-preview"><img src={imageUrl(preview)} alt={preview.name}/></div>}
         {zone&&<div className="forge-modal" onClick={()=>setZone(null)}><section onClick={e=>e.stopPropagation()}><header><h2>{zone.title}</h2><button onClick={()=>setZone(null)}>关闭</button></header><div>{zone.cards.map(c=>cardNode(c))}</div></section></div>}
       </>}
     </>}

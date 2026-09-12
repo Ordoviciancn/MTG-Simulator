@@ -7,6 +7,7 @@ type RawPlayer = {id:number;name:string;life:number;libraryCount:number;handCoun
 
 // References belong to one observer. A card leaving their visible zones loses its handle.
 export class ForgeProjection {
+  private gameNumber=0;
   private handles=new Map<number,string>();
   private stackHandles=new Map<number,string>();
   private playerIds=new Map<number,string>();
@@ -15,6 +16,7 @@ export class ForgeProjection {
   resolvePlayer(handle:unknown):number|undefined {return [...this.playerIds].find(([,id])=>id===handle)?.[0];}
   private handle(id:number):string {let result=this.handles.get(id);if(!result){result=randomUUID();this.handles.set(id,result);}return result;}
   snapshot(message:ForgeMessage):ArenaSnapshot {
+    if(Number(message.gameNumber??0)!==this.gameNumber){this.gameNumber=Number(message.gameNumber??0);this.handles.clear();this.stackHandles.clear();this.playerIds.clear();}
     const players=message.players as RawPlayer[];
     if(!Array.isArray(players)||players.length!==2)throw new Error('Invalid Forge player view.');
     players.forEach((p,i)=>this.playerIds.set(p.id,this.identities()[i]));
@@ -35,7 +37,7 @@ export class ForgeProjection {
       const attackerId=this.handles.get(raw.attackerId);if(!attackerId)continue;
       combat.push({attackerId,blockerIds:raw.blockerIds.map(id=>this.handles.get(id)).filter((id):id is string=>!!id),defenderPlayerId:this.playerIds.get(raw.defenderPlayerId!),defenderCardId:this.handles.get(raw.defenderCardId!)});
     }
-    return {players:projected,stack,combat,phase:String(message.phase),activePlayerId:this.playerIds.get(Number(message.activePlayerId))??null,gameOver:message.gameOver===true,lastEventSequence:Number(message.lastEventSequence??0)};
+    return {players:projected,stack,combat,phase:String(message.phase),activePlayerId:this.playerIds.get(Number(message.activePlayerId))??null,gameOver:message.gameOver===true,lastEventSequence:Number(message.lastEventSequence??0),gameNumber:Number(message.gameNumber??1),bestOf:message.bestOf===3?3:1,scores:Array.isArray(message.scores)?message.scores.map(Number):[0,0],matchOver:message.matchOver===true,coinWinnerSeat:message.coinWinnerSeat===0||message.coinWinnerSeat===1?message.coinWinnerSeat:null};
   }
   event(message:ForgeMessage):ArenaEvent {
     const raw=message.data as Record<string,unknown>,data:ArenaEvent['data']={};

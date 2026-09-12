@@ -1,10 +1,11 @@
 export type ForgePrompt = {
   seat: number;
   requestId: string;
-  kind: 'input' | 'choice' | 'order' | 'number' | 'unsupported';
+  kind: 'input' | 'choice' | 'order' | 'number' | 'sideboard' | 'unsupported';
   message: string;
   inputType?:string;
   options?: { value: number; label: string }[];
+  initialMainSize?: number;
   min?: number;
   max?: number;
   okEnabled?: boolean;

@@ -26,6 +26,10 @@ public final class ForgeHumanBridge {
     static final ExecutorService UI = Executors.newSingleThreadExecutor(r -> new Thread(r, "Bridge UI"));
     static final Seat[] SEATS = new Seat[2];
     static Game game;
+    static Match match;
+    static int gameNumber;
+    static Integer coinWinnerSeat;
+    static final boolean[] FULL_CONTROL=new boolean[2];
     static Path resources;
     static volatile boolean initialized;
     static synchronized void emit(Object value) { System.out.println("FORGE_BRIDGE " + JSON.toJson(value)); System.out.flush(); }
@@ -55,6 +59,7 @@ public final class ForgeHumanBridge {
         volatile CompletableFuture<JsonElement> pending;
         int choiceMin,choiceMax,choiceSize;
         String choiceKind="choice";
+        int initialMainSize;
         String message="";
         boolean okEnabled,cancelEnabled;
         String okLabel="OK",cancelLabel="Cancel";
@@ -65,7 +70,7 @@ public final class ForgeHumanBridge {
             UI.execute(this::publishInput);
         }
         void publishInput() {
-            if(pending!=null)return;
+            if(SEATS[index]!=this || pending!=null)return;
             Object current=controller.getInputProxy().getInput();
             if(current==null || current.getClass().getSimpleName().equals("InputLockUI")){closeInput();return;}
             if(requestId==null || current!=inputIdentity) { requestId=Long.toString(IDS.incrementAndGet());inputIdentity=current; }
@@ -78,12 +83,12 @@ public final class ForgeHumanBridge {
         }
         JsonElement choose(String message,List<?> choices,int min,int max,boolean ordered) throws Exception {
             CompletableFuture<JsonElement> future=new CompletableFuture<>();
-            choiceKind=ordered?"order":"choice";choiceMin=min;choiceMax=max;choiceSize=choices.size();pending=future;
+            choiceKind=initialMainSize>0?"sideboard":ordered?"order":"choice";choiceMin=min;choiceMax=max;choiceSize=choices.size();pending=future;
             requestId=Long.toString(IDS.incrementAndGet());
             List<Object> options=new ArrayList<>();
             for(int i=0;i<choices.size();i++) options.add(obj("value",i,"label",String.valueOf(choices.get(i))));
             states();
-            emit(obj("type","prompt","seat",index,"requestId",requestId,"kind",choiceKind,"message",message,"options",options,"min",min,"max",max));
+            emit(obj("type","prompt","seat",index,"requestId",requestId,"kind",choiceKind,"message",message,"options",options,"min",min,"max",max,"initialMainSize",initialMainSize));
             try { return future.get(); } finally { pending=null; requestId=null; }
         }
         List<?> chooseList(String message,List<?> choices,int min,int max) throws Exception {
@@ -120,12 +125,21 @@ public final class ForgeHumanBridge {
                 case "awaitNextInput": closeInput();return null;
                 case "setWeaklySelectable": actionable.clear();for(Object c:(Iterable<?>)a[0])actionable.add(((CardView)c).getId());return null;
                 case "clearWeaklySelectable": actionable.clear();return null;
-                case "showPromptMessage": message=String.valueOf(a[1]); input(); return null;
+                case "showPromptMessage": message=String.valueOf(a[1]);if(gameNumber==1 && message.contains(forge.util.Localizer.getInstance().getMessage("lblYouHaveWonTheCoinToss",player.getName())))coinWinnerSeat=index;input(); return null;
                 case "updateButtons": okLabel=(String)a[1];cancelLabel=(String)a[2];okEnabled=(boolean)a[3];cancelEnabled=(boolean)a[4];input();return null;
                 case "getAbilityToPlay": {List<?> abilities=(List<?>)a[1];return abilities.size()==1?abilities.get(0):chooseList("Choose ability",abilities,1,1).get(0);}
                 case "one": case "oneOrNone": { List<?> picked=chooseList((String)a[0],(List<?>)a[1],n.equals("one")?1:0,1); return picked.isEmpty()?null:picked.get(0); }
                 case "getChoices": return chooseList((String)a[0],(List<?>)a[3],(int)a[1],(int)a[2]);
                 case "getInteger": return chooseNumber((String)a[0],(int)a[1],(int)a[2]);
+                case "sideboard": {
+                    var side=(forge.deck.CardPool)a[0];var main=(forge.deck.CardPool)a[1];
+                    List<Object> pool=new ArrayList<>(main.toFlatList());pool.addAll(side.toFlatList());
+                    initialMainSize=main.countAll();
+                    var format=match.getRules().getGameType().getDeckFormat();
+                    int minMain=Math.min(initialMainSize,format.getMainRange().getMinimum());
+                    int maxSide=format.getSideRange()==null?pool.size():format.getSideRange().getMaximum();
+                    try{return chooseList("换备：选择下一局主牌",pool,Math.max(minMain,pool.size()-maxSide),pool.size());}finally{initialMainSize=0;}
+                }
                 case "many": return chooseList((String)a[0]+" "+a[1],(List<?>)a[4],(int)a[2],(int)a[3]);
                 case "order": {
                     List<Object> all=new ArrayList<>((List<?>)a[4]);if(a[5]!=null)all.addAll((List<?>)a[5]);
@@ -191,7 +205,7 @@ public final class ForgeHumanBridge {
         Map<String,Object> out=obj("id",c.getId(),"ownerId",c.getOwner().getId(),"controllerId",c.getController().getId(),"tapped",c.isTapped());
         for(Seat seat:SEATS)if(seat!=null && seat.player==viewer)out.put("actionable",seat.actionable.contains(c.getId()));
         if(!c.getView().canBeShownTo(viewer.getView()) || (c.isFaceDown() && !c.getView().mayPlayerLook(viewer.getView()))) { out.put("name","Face-down card");out.put("kind","spell");return out; }
-        out.put("name",c.getName());out.put("kind",c.isLand()?"land":c.isCreature()?"creature":"spell");
+        out.put("name",c.getName());out.put("kind",c.isCreature()?"creature":c.isLand()?"land":"spell");
         if(c.isCreature()){out.put("power",c.getNetPower());out.put("toughness",c.getNetToughness());} return out;
     }
     static List<Object> zone(Player owner,ZoneType zone,Player viewer) { List<Object> result=new ArrayList<>();for(Card c:owner.getCardsIn(zone)) result.add(card(c,viewer));return result; }
@@ -210,7 +224,7 @@ public final class ForgeHumanBridge {
         if(game==null)return;
         for(Seat seat:SEATS) {if(seat==null)continue; List<Object> players=new ArrayList<>();for(Player p:game.getRegisteredPlayers())players.add(obj("id",p.getId(),"name",p.getName(),"life",p.getLife(),"libraryCount",p.getCardsIn(ZoneType.Library).size(),"handCount",p.getCardsIn(ZoneType.Hand).size(),"hand",p==seat.player?zone(p,ZoneType.Hand,seat.player):List.of(),"battlefield",zone(p,ZoneType.Battlefield,seat.player),"graveyard",zone(p,ZoneType.Graveyard,seat.player),"exile",zone(p,ZoneType.Exile,seat.player)));
             List<Object> stack=new ArrayList<>();for(var item:game.getStack()) {Map<String,Object> projected=card(item.getSourceCard(),seat.player);projected.put("stackId",item.getId());projected.put("ability",item.getSpellAbility().isAbility());stack.add(projected);}
-            Player active=game.getPhaseHandler().getPlayerTurn();emit(obj("type","state","seat",seat.index,"players",players,"stack",stack,"combat",combat(),"lastEventSequence",EVENTS.get(),"phase",String.valueOf(game.getPhaseHandler().getPhase()),"activePlayerId",active==null?null:active.getId(),"gameOver",game.isGameOver())); }
+            Player active=game.getPhaseHandler().getPlayerTurn();emit(obj("type","state","seat",seat.index,"players",players,"stack",stack,"combat",combat(),"lastEventSequence",EVENTS.get(),"phase",String.valueOf(game.getPhaseHandler().getPhase()),"activePlayerId",active==null?null:active.getId(),"gameOver",game.isGameOver(),"gameNumber",gameNumber,"bestOf",match.getRules().getGamesPerMatch(),"scores",match.getPlayers().stream().map(p->match.getGamesWonBy(p.getPlayer())).toList(),"matchOver",match.isMatchOver(),"coinWinnerSeat",coinWinnerSeat)); }
     }
     static void init(JsonObject input) {
         try {
@@ -219,20 +233,20 @@ public final class ForgeHumanBridge {
             List<RegisteredPlayer> players=new ArrayList<>();
             for(JsonElement entry:input.getAsJsonArray("players")) { JsonObject p=entry.getAsJsonObject();Deck deck=new Deck(p.get("name").getAsString());
                 for(JsonElement line:p.getAsJsonArray("deck")){JsonObject row=line.getAsJsonObject();String name=row.get("name").getAsString();var paper=FModel.getMagicDb().getCommonCards().getCard(name);if(paper==null)throw new IllegalArgumentException("Unknown Forge card: "+name);deck.getMain().add(paper,row.get("count").getAsInt());}
-                players.add(new RegisteredPlayer(deck).setPlayer(new LobbyPlayerHuman(p.get("name").getAsString()))); }
+                if(p.has("sideboard"))for(JsonElement line:p.getAsJsonArray("sideboard")){JsonObject row=line.getAsJsonObject();String name=row.get("name").getAsString();var paper=FModel.getMagicDb().getCommonCards().getCard(name);if(paper==null)throw new IllegalArgumentException("Unknown Forge card: "+name);deck.getOrCreate(forge.deck.DeckSection.Sideboard).add(paper,row.get("count").getAsInt());} players.add(new RegisteredPlayer(deck).setPlayer(new LobbyPlayerHuman(p.get("name").getAsString()))); }
             if(players.size()!=2)throw new IllegalArgumentException("Exactly two players required");
-            Match match=new Match(new GameRules(GameType.Constructed),players,"Tabletop Forge match");game=match.createGame();
-            for(int i=0;i<2;i++){Seat seat=new Seat(i,game.getPlayers().get(i));SEATS[i]=seat;seat.controller.setGui(proxy(IGuiGame.class,seat));seat.controller.getYieldController().setPref(FPref.YIELD_AUTO_PASS_NO_ACTIONS,"true");seat.controller.getYieldController().setPref(FPref.UI_SHOW_ACTIONABLE_HIGHLIGHTS,"true");}
+            GameRules rules=new GameRules(GameType.Constructed);rules.setGamesPerMatch(input.has("bestOf")&&input.get("bestOf").getAsInt()==3?3:1);match=new Match(rules,players,"Tabletop Forge match");do {gameNumber++;game=match.createGame();
+            for(int i=0;i<2;i++){Seat seat=new Seat(i,game.getPlayers().get(i));SEATS[i]=seat;seat.controller.setGui(proxy(IGuiGame.class,seat));seat.controller.getYieldController().setPref(FPref.YIELD_AUTO_PASS_NO_ACTIONS,Boolean.toString(!FULL_CONTROL[i]));seat.controller.getYieldController().setDisableAutoYields(FULL_CONTROL[i]);seat.controller.getYieldController().setDisableAutoTriggers(FULL_CONTROL[i]);seat.controller.getYieldController().setPref(FPref.UI_SHOW_ACTIONABLE_HIGHLIGHTS,"true");}
             game.subscribeToEvents(new SemanticEvents());
-            match.startGame(game);states();emit(obj("type","event","message","Game finished"));
+            match.startGame(game);for(Seat seat:SEATS)seat.closeInput();states();}while(!match.isMatchOver());emit(obj("type","event","message","Match finished"));
         } catch(Throwable e){fail(e);}
     }
     static void command(JsonObject input) {
         String type=input.get("type").getAsString();
         if(type.equals("init")){if(initialized)throw new IllegalStateException("Already initialized");initialized=true;new Thread(()->init(input),"Forge match").start();return;}
         int index=input.get("seat").getAsInt();if(index<0||index>1||SEATS[index]==null)throw new IllegalArgumentException("Invalid seat");Seat seat=SEATS[index];
-        if(type.equals("control")){boolean full=input.get("fullControl").getAsBoolean();String value=Boolean.toString(!full);var yields=seat.controller.getYieldController();if(full){yields.setAutoPassUntilStackEmpty(false,true);yields.setAutoPassUntilEndOfTurn(false);yields.clearMarker();}yields.setDisableAutoYields(full);yields.setDisableAutoTriggers(full);yields.setPref(FPref.YIELD_AUTO_PASS_NO_ACTIONS,value);emit(obj("type","control","seat",index,"fullControl",full));acknowledge(input,true,null);UI.execute(()->seat.controller.setYieldPref(FPref.YIELD_AUTO_PASS_NO_ACTIONS,value));return;}
-        if(!Objects.equals(seat.requestId,input.get("requestId").getAsString()))throw new IllegalArgumentException("Stale prompt");
+        if(type.equals("control")){boolean full=input.get("fullControl").getAsBoolean();FULL_CONTROL[index]=full;String value=Boolean.toString(!full);var yields=seat.controller.getYieldController();if(full){yields.setAutoPassUntilStackEmpty(false,true);yields.setAutoPassUntilEndOfTurn(false);yields.clearMarker();}yields.setDisableAutoYields(full);yields.setDisableAutoTriggers(full);yields.setPref(FPref.YIELD_AUTO_PASS_NO_ACTIONS,value);emit(obj("type","control","seat",index,"fullControl",full));acknowledge(input,true,null);UI.execute(()->seat.controller.setYieldPref(FPref.YIELD_AUTO_PASS_NO_ACTIONS,value));return;}
+        if(type.equals("concede")){if(game.isGameOver()||seat.pending!=null)throw new IllegalStateException("Concession unavailable during modal choice");acknowledge(input,true,null);UI.execute(()->{try{seat.controller.concede();states();}catch(Throwable e){fail(e);}});return;} if(!Objects.equals(seat.requestId,input.get("requestId").getAsString()))throw new IllegalArgumentException("Stale prompt");
         if(type.equals("choice")) {
             CompletableFuture<JsonElement> future=seat.pending;
             if(future==null)throw new IllegalStateException("No modal choice");

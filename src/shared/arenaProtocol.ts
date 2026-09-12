@@ -4,12 +4,12 @@ import type { ForgePrompt } from './forgeTypes';
 export type ArenaCard = {id:string;name:string;ownerId:string;controllerId:string;kind:string;tapped:boolean;hidden:boolean;actionable:boolean;power?:number;toughness?:number;stackId?:string;ability?:boolean};
 export type ArenaPlayer = {id:string;name:string;life:number;libraryCount:number;handCount:number;hand:ArenaCard[];battlefield:ArenaCard[];graveyard:ArenaCard[];exile:ArenaCard[]};
 export type ArenaCombat = {attackerId:string;blockerIds:string[];defenderPlayerId?:string;defenderCardId?:string};
-export type ArenaSnapshot = {players:ArenaPlayer[];stack:ArenaCard[];combat:ArenaCombat[];phase:string;activePlayerId:string|null;gameOver:boolean;lastEventSequence:number};
+export type ArenaSnapshot = {players:ArenaPlayer[];stack:ArenaCard[];combat:ArenaCombat[];phase:string;activePlayerId:string|null;gameOver:boolean;lastEventSequence:number;gameNumber?:number;bestOf?:1|3;scores?:number[];matchOver?:boolean;coinWinnerSeat?:number|null};
 export type ArenaEvent = {sequence:number;kind:string;data:{playerId?:string;cardId?:string;name?:string;from?:string;to?:string;phase?:string;amount?:number;before?:number;after?:number;tapped?:boolean;fizzled?:boolean;targetPlayerIds?:string[];targetCardIds?:string[]}};
 export type ArenaRoomView = {matchId:string;code:string;playerId:string;seat:number;revision:number;status:'waiting'|'starting'|'playing'|'failed';snapshot:ArenaSnapshot|null;prompt:ForgePrompt|null;fullControl:boolean;error?:string};
 export type ArenaCredential = {code:string;playerId:string;token:string};
 export type ArenaClientMessage =
- | {type:'create';name:string;deckText:string}
+ | {type:'create';name:string;deckText:string;bestOf?:1|3}
  | {type:'join';code:string;name:string;deckText:string}
  | {type:'resume';credential:ArenaCredential}
  | {type:'command';command:Command}

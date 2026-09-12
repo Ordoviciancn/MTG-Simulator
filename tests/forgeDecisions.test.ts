@@ -33,3 +33,10 @@ test('ordered choices require the complete unique permutation when all entries a
   assert.equal(validateForgeDecision(order,{type:'choice',requestId:'order',value:[1,0]}),true);
   for(const value of [[0],[1,1],[0,1,2]])assert.equal(validateForgeDecision(order,{type:'choice',requestId:'order',value}),false);
 });
+
+test('sideboarding preserves physical copies and rejects invented or undersized main decks',()=>{
+  const sideboard:ForgePrompt={seat:0,requestId:'side',kind:'sideboard',message:'Sideboard',initialMainSize:2,min:2,max:3,options:[{value:0,label:'Mountain'},{value:1,label:'Mountain'},{value:2,label:'Island'}]};
+  assert.equal(validateForgeDecision(sideboard,{type:'choice',requestId:'side',value:[0,2]}),true);
+  for(const value of [[0],[0,0],[0,3]])assert.equal(validateForgeDecision(sideboard,{type:'choice',requestId:'side',value}),false);
+  assert.equal(validateForgeDecision(sideboard,{type:'ok',requestId:'side'}),false);
+});
