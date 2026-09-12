@@ -1,5 +1,5 @@
 import {useCallback,useEffect,useRef,useState,type CSSProperties} from 'react';
-import type {ArenaCard,ArenaEvent,ArenaRoomView,ArenaServerMessage} from '../shared/arenaProtocol';
+import type {ArenaCard,ArenaEvent,ArenaRoomView,ArenaServerMessage,ArenaRoomListing} from '../shared/arenaProtocol';
 import type {Command} from '../shared/matchProtocol';
 import {ForgeControls} from './ForgeControls';
 import {SemanticCanvas} from './SemanticCanvas';
@@ -8,6 +8,8 @@ import {arenaKeyboardIntent} from './arenaKeyboard';
 import {ArenaAtmosphere,AvatarCrest} from './ArenaAtmosphere';
 import {useCardDrag} from './useCardDrag';
 import {CoinToss} from './CoinToss';
+import {serverAddress,seatStorageKey} from './serverAddress';
+import {ArenaLobby} from './ArenaLobby';
 import './forgeArena.css';
 import './forgeArt.css';
 
@@ -17,8 +19,11 @@ const phaseLabel=(value:string)=>({null:'准备对局',UNTAP:'重置',UPKEEP:'�
 const imageUrl=(card:ArenaCard)=>card.hidden?'/mtg-card-back.png':`https://api.scryfall.com/cards/named?exact=${encodeURIComponent(card.name)}&format=image&version=normal`;
 
 export function ArenaClient(){
+  const defaultEndpoint=serverAddress(location.port==='5180'?`${location.protocol}//${location.hostname}:8787`:location.origin,location.protocol);
+  const [endpoint,setEndpoint]=useState(()=>{try{return serverAddress(sessionStorage.getItem('forge-server')||defaultEndpoint,location.protocol);}catch{return defaultEndpoint;}}),[connectionEpoch,setConnectionEpoch]=useState(0);
   const [room,setRoom]=useState<ArenaRoomView|null>(null),[connected,setConnected]=useState(false),[error,setError]=useState('');
-  const [name,setName]=useState('玩家'),[deck,setDeck]=useState(defaultDeck),[code,setCode]=useState('');
+  const [rooms,setRooms]=useState<ArenaRoomListing[]>([]);
+  const [name,setName]=useState('玩家'),[deck,setDeck]=useState(defaultDeck);
   const [bestOf,setBestOf]=useState<1|3>(3),[coinDone,setCoinDone]=useState<string|null>(null);
   const [pending,setPending]=useState(false),[events,setEvents]=useState<ArenaEvent[]>([]),[preview,setPreview]=useState<ArenaCard|null>(null);
   const [zone,setZone]=useState<{title:string;cards:ArenaCard[]}|null>(null);
@@ -28,17 +33,21 @@ export function ArenaClient(){
   useEffect(()=>{
     let closed=false,retry:ReturnType<typeof setTimeout>,attempt=0;
     const connect=()=>{
-      const host=location.port==='5180'?`${location.hostname}:8787`:location.host;
-      const ws=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${host}/forge`);socket.current=ws;
+      const ws=new WebSocket(endpoint);socket.current=ws;
+      ws.onerror=()=>{if(!closed&&socket.current===ws)setError('无法连接服务器，请检查地址、端口和服务器是否已启动。');};
       ws.onopen=()=>{
-        if(closed){ws.close();return;}attempt=0;setConnected(true);
-        const saved=sessionStorage.getItem('forge-seat');
-        if(saved){try{ws.send(JSON.stringify({type:'resume',credential:JSON.parse(saved)}));}catch{sessionStorage.removeItem('forge-seat');}}
+        if(closed){ws.close();return;}attempt=0;setConnected(true);setError('');
+        const saved=sessionStorage.getItem(seatStorageKey(endpoint));
+        if(saved){try{ws.send(JSON.stringify({type:'resume',credential:JSON.parse(saved)}));}catch{sessionStorage.removeItem(seatStorageKey(endpoint));}}
+        else ws.send(JSON.stringify({type:'listRooms'}));
       };
       let hydrated=false;
       ws.onmessage=e=>{
-        const message=JSON.parse(e.data) as ArenaServerMessage;
-        if(message.type==='credential'){sessionStorage.setItem('forge-seat',JSON.stringify(message.credential));}
+        if(closed||socket.current!==ws)return;
+        let message:ArenaServerMessage;try{message=JSON.parse(e.data);}catch{setError('服务器返回了无效消息。');return;}
+        if(!message||typeof message.type!=='string')return;
+        if(message.type==='rooms'&&Array.isArray(message.rooms))setRooms(message.rooms);
+        if(message.type==='credential'){sessionStorage.setItem(seatStorageKey(endpoint),JSON.stringify(message.credential));}
         if(message.type==='view'){
           const first=roomRef.current?.matchId!==message.room.matchId;
           roomRef.current=message.room;setRoom(message.room);
@@ -54,16 +63,20 @@ export function ArenaClient(){
           if(message.receipt.commandId===pendingCommand.current?.command.commandId){pendingCommand.current=null;setPending(false);}
           if(message.receipt.status!=='accepted')setError(message.receipt.status==='resync'?'对局状态已更新，请重新选择。':'该操作已失效或不适用于当前窗口。');
         }
-        if(message.type==='error'){setError(message.message);setPending(false);if(message.message.includes('无法恢复座位')){sessionStorage.removeItem('forge-seat');setRoom(null);pendingCommand.current=null;}}
+        if(message.type==='error'){setError(message.message);setPending(false);if(message.message.includes('无法恢复座位')){sessionStorage.removeItem(seatStorageKey(endpoint));setRoom(null);roomRef.current=null;pendingCommand.current=null;ws.send(JSON.stringify({type:'listRooms'}));}}
       };
       ws.onclose=e=>{
+        if(closed||socket.current!==ws)return;
         setConnected(false);if(pendingCommand.current)pendingCommand.current.sent=false;
         if(!closed && e.code!==4001)retry=setTimeout(connect,Math.min(1000*2**attempt++,10000));
         if(e.code===4001)setError('此座位已在另一个连接恢复。');
       };
     };
     connect();return()=>{closed=true;clearTimeout(retry);socket.current?.close();};
-  },[]);
+  },[endpoint,connectionEpoch]);
+  function connectServer(address:string){
+    try{const next=serverAddress(address,location.protocol);setError('');sessionStorage.setItem('forge-server',next);setConnected(false);setRooms([]);setRoom(null);roomRef.current=null;pendingCommand.current=null;setPending(false);setEndpoint(next);setConnectionEpoch(value=>value+1);}catch(error){setError((error as Error).message);}
+  }
   function send(value:unknown){if(socket.current?.readyState===WebSocket.OPEN){setError('');socket.current.send(JSON.stringify(value));}}
   function command(operation:string,parameters:Record<string,unknown>={}){
     if(!room||pending||!connected||room.status!=='playing'||coinPending)return;
@@ -95,8 +108,8 @@ export function ArenaClient(){
   return <main className="forge-app">
     <ArenaAtmosphere/>
     {cardDrag.drag&&<div className={`forge-drag-card ${cardDrag.drag.returning?'returning':''}`} aria-hidden="true" style={{left:cardDrag.drag.originX+cardDrag.drag.x-cardDrag.drag.startX,top:cardDrag.drag.originY+cardDrag.drag.y-cardDrag.drag.startY,width:cardDrag.drag.width,height:cardDrag.drag.height}}><img src={imageUrl(cardDrag.drag.card)} alt=""/><i/></div>}
-    {!room?<section className="forge-lobby"><span className="forge-eyebrow">TABLETOP · ARENA</span><h1>进入对局</h1><p>双方就座后开始。无可用动作时自动让过，有选择时等待你的决定。</p><label>玩家名称<input value={name} onChange={e=>setName(e.target.value)} maxLength={64}/></label><label>赛制<select value={bestOf} onChange={e=>setBestOf(Number(e.target.value) as 1|3)}><option value={3}>BO3 · 两胜制，局间换备</option><option value={1}>BO1 · 单局</option></select></label><label>牌表<textarea value={deck} onChange={e=>setDeck(e.target.value)} rows={7}/></label><small>备牌以单独一行 Sideboard 开始，随后填写数量和英文牌名。</small><button disabled={!connected} onClick={()=>send({type:'create',name,deckText:deck,bestOf})}>创建对局</button><div className="forge-join"><input placeholder="房间码" value={code} onChange={e=>setCode(e.target.value)}/><button disabled={!connected||!code} onClick={()=>send({type:'join',code,name,deckText:deck})}>加入</button></div><small>{connected?'已连接':'正在连接…'}</small></section>:<>
-      <header className="forge-top"><span>对局 {room.code}</span><span>{connected?'已连接':'正在重新连接…'}</span><button onClick={()=>setAnimationSkip(value=>value+1)}>跳过动画</button><button onClick={()=>setAnimationSpeed(value=>value===1?2:1)}>动画 {animationSpeed}×</button><button onClick={()=>{sessionStorage.removeItem('forge-seat');location.reload();}}>离开</button></header>
+    {!room?<ArenaLobby connected={connected} name={name} onName={setName} deck={deck} onDeck={setDeck} bestOf={bestOf} onBestOf={setBestOf} endpoint={endpoint} defaultEndpoint={defaultEndpoint} onConnect={connectServer} rooms={rooms} onRefresh={()=>send({type:"listRooms"})} onCreate={()=>send({type:"create",name,deckText:deck,bestOf})} onJoin={code=>send({type:"join",code,name,deckText:deck})} error={error}/>:<>
+      <header className="forge-top"><span>对局 {room.code}</span><span>{connected?'已连接':'正在重新连接…'}</span><button onClick={()=>setAnimationSkip(value=>value+1)}>跳过动画</button><button onClick={()=>setAnimationSpeed(value=>value===1?2:1)}>动画 {animationSpeed}×</button><button onClick={()=>{sessionStorage.removeItem(seatStorageKey(endpoint));connectServer(endpoint);}}>返回大厅</button></header>
       {state?.bestOf===3&&<div className="forge-match-score">BO3 · 第 {state.gameNumber} 局 · {you?.name} {state.scores?.[room.seat]??0} : {state.scores?.[1-room.seat]??0} {opponent?.name}{state.matchOver?' · 比赛结束':''}</div>}
       {coinPending&&<CoinToss winner={state!.players[state!.coinWinnerSeat!]?.name??'牌手'} onComplete={finishCoin}/>}
       {!state?<section className="forge-wait"><h1>{room.status==='waiting'?'等待对手':'正在准备对局'}</h1><p>房间码：{room.code}</p></section>:<>

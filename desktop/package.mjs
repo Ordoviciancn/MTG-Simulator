@@ -12,6 +12,7 @@ const serverBuild = await build({ entryPoints: [path.join(root, 'src/server/inde
   banner: { js: 'import { createRequire } from "node:module"; const require = createRequire(import.meta.url);' }, external: ['bufferutil', 'utf-8-validate'] });
 await cp(path.join(root, 'dist'), path.join(stage, 'dist'), { recursive: true });
 await cp(path.join(root, 'desktop/main.cjs'), path.join(stage, 'main.cjs'));
+await cp(path.join(root, 'desktop/preload.cjs'), path.join(stage, 'preload.cjs'));
 await cp(path.join(root, 'desktop/server-entry.mjs'), path.join(stage, 'server-entry.mjs'));
 await writeFile(path.join(stage, 'package.json'), JSON.stringify({ name: 'mtg-simulator', productName: 'MTG Simulator', version: manifest.version, main: 'main.cjs' }));
 const packageDirectories = new Set([path.join(root, 'node_modules/react'), path.join(root, 'node_modules/react-dom')]);

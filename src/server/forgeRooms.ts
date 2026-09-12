@@ -141,11 +141,21 @@ export function createForgeRooms(root:string){
   const connect=(ws:WebSocket)=>{
     let bound:{room:ForgeRoom;seat:number}|undefined;
     let inbox=Promise.resolve();
+    let queued=0;
     ws.on('message',raw=>{
+      if(ws.readyState!==WebSocket.OPEN)return;
+      if(++queued>64){queued--;ws.close(1008,'Too many pending messages');return;}
       inbox=inbox.then(async()=>{
+        if(ws.readyState!==WebSocket.OPEN)return;
         if(raw.toString().length>32768)throw new Error('消息超过大小限制。');
         const message=JSON.parse(raw.toString());
+        if(message.type==='listRooms'){
+          if(bound)throw new Error('当前连接已加入对局。');
+          send(ws,{type:'rooms',rooms:[...rooms.values()].map(room=>({code:room.code,hostName:room.members[0].name,seats:room.members.length,bestOf:room.bestOf,status:room.status}))});
+          return;
+        }
         if(message.type==='create'||message.type==='join'){
+          if(process.env.FORGE_REMOTE_CLIENT_ONLY==='1')throw new Error('当前是远程客户端模式，请先在大厅连接远程服务器。');
           if(bound)throw new Error('当前连接已加入对局。');
           const player=member(message.name,message.deckText);
           let room:ForgeRoom;
@@ -176,7 +186,7 @@ export function createForgeRooms(root:string){
           if(receipt.status==='resync')send(ws,{type:'view',room:bound.room.view(bound.seat)});return;
         }
         throw new Error('不支持的消息。');
-      }).catch(error=>send(ws,{type:'error',message:String((error as Error).message)}));
+      }).catch(error=>send(ws,{type:'error',message:String((error as Error).message)})).finally(()=>{queued--;});
     });
     ws.on('close',()=>bound?.room.detach(ws));
   };

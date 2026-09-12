@@ -8,13 +8,16 @@ export type ArenaSnapshot = {players:ArenaPlayer[];stack:ArenaCard[];combat:Aren
 export type ArenaEvent = {sequence:number;kind:string;data:{playerId?:string;cardId?:string;name?:string;from?:string;to?:string;phase?:string;amount?:number;before?:number;after?:number;tapped?:boolean;fizzled?:boolean;targetPlayerIds?:string[];targetCardIds?:string[]}};
 export type ArenaRoomView = {matchId:string;code:string;playerId:string;seat:number;revision:number;status:'waiting'|'starting'|'playing'|'failed';snapshot:ArenaSnapshot|null;prompt:ForgePrompt|null;fullControl:boolean;error?:string};
 export type ArenaCredential = {code:string;playerId:string;token:string};
+export type ArenaRoomListing = {code:string;hostName:string;seats:number;bestOf:1|3;status:ArenaRoomView['status']};
 export type ArenaClientMessage =
+ | {type:'listRooms'}
  | {type:'create';name:string;deckText:string;bestOf?:1|3}
  | {type:'join';code:string;name:string;deckText:string}
  | {type:'resume';credential:ArenaCredential}
  | {type:'command';command:Command}
  | {type:'resync'};
 export type ArenaServerMessage =
+ | {type:'rooms';rooms:ArenaRoomListing[]}
  | {type:'credential';credential:ArenaCredential}
  | {type:'view';room:ArenaRoomView}
  | {type:'event';matchId:string;event:ArenaEvent}
