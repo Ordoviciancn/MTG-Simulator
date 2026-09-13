@@ -7,9 +7,9 @@ const art=(name?:string)=>!name||name==='Face-down card'?'/mtg-card-back.png':`h
 export function StackPanel({cards,history,players,onInspect,onDismiss,onSelect}:{cards:ArenaCard[];history:ArenaEvent[];players:ArenaPlayer[];onInspect:(card:ArenaCard)=>void;onDismiss:()=>void;onSelect:(card:ArenaCard)=>void}){
   const [expanded,setExpanded]=useState(false);
   const recent=[...history].reverse();
-  if(!cards.length&&!recent.length)return null;
-  return <aside className="arena-stack-panel" aria-label="堆叠与结算记录">
-    <header><span>堆叠</span><b>{cards.length}</b><small>{cards.length?'等待结算':'堆叠已清空'}</small></header>
+  return <details className="arena-stack-panel" onToggle={event=>{if(!event.currentTarget.open)onDismiss();}}>
+    <summary aria-label={`堆叠与结算记录，当前 ${cards.length} 项`}><span>堆叠</span><b>{cards.length}</b><small className="arena-stack-toggle-hint">查看记录</small></summary>
+    {!cards.length&&!recent.length&&<p className="arena-stack-empty">当前没有堆叠或结算记录。</p>}
     {!cards.length&&recent[0]&&<section className="arena-stack-last" aria-label="最近结算展示"><img src={art(recent[0].data.name)} alt={recent[0].data.name??'未公开来源'}/><div><small>{recent[0].kind==='cast'?'最近进入堆叠':recent[0].data.fizzled?'未能结算':'最近结算'} · {recent[0].data.ability?'异能':'咒语'}</small><strong>{recent[0].data.name??'未公开来源'}</strong>{recent[0].data.description&&<p>{recent[0].data.description}</p>}</div></section>}
     {!!cards.length&&<ol className="arena-stack-live">{cards.map((card,index)=><li key={card.stackId??card.id} className={card.ability?'is-ability':''}>
       <div className="arena-stack-meta"><span>{card.ability?'异能':'咒语'}</span><small>{players.find(p=>p.id===card.controllerId)?.name}</small></div>
@@ -23,5 +23,5 @@ export function StackPanel({cards,history,players,onInspect,onDismiss,onSelect}:
         <div><small className={event.kind==='cast'?'cast':event.data.fizzled?'fizzled':'resolved'}>{event.kind==='cast'?'进入堆叠':event.data.fizzled?'未能结算':'已结算'} · {event.data.ability?'异能':'咒语'}</small><strong>{event.data.name??'未公开来源'}</strong>{event.data.description&&<p>{event.data.description}</p>}<small>{players.find(p=>p.id===event.data.playerId)?.name}</small></div>
       </li>)}</ol>
     </section>}
-  </aside>;
+  </details>;
 }
