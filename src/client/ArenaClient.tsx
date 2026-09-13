@@ -1,6 +1,7 @@
 import {useCallback,useEffect,useRef,useState,type CSSProperties} from 'react';
 import type {ArenaCard,ArenaEvent,ArenaRoomView,ArenaServerMessage,ArenaRoomListing} from '../shared/arenaProtocol';
 import type {Command} from '../shared/matchProtocol';
+import {connectionRecovery} from './connectionRecovery';
 import {ForgeControls} from './ForgeControls';
 import {SemanticCanvas} from './SemanticCanvas';
 import {CombatLines} from './CombatLines';
@@ -28,7 +29,7 @@ export function ArenaClient(){
   const [pending,setPending]=useState(false),[events,setEvents]=useState<ArenaEvent[]>([]),[preview,setPreview]=useState<ArenaCard|null>(null);
   const [zone,setZone]=useState<{title:string;cards:ArenaCard[]}|null>(null);
   const [animationSkip,setAnimationSkip]=useState(0),[animationSpeed,setAnimationSpeed]=useState(1),[animationBaseline,setAnimationBaseline]=useState({epoch:0,sequence:0});
-  const socket=useRef<WebSocket|null>(null),roomRef=useRef(room),lastSequence=useRef(0),pendingCommand=useRef<{command:Command;sent:boolean}|null>(null);
+  const socket=useRef<WebSocket|null>(null),roomRef=useRef(room),lastSequence=useRef(0),pendingCommand=useRef<{command:Command;sent:boolean;sentAt:number}|null>(null);
   roomRef.current=room;
   useEffect(()=>{
     let closed=false,retry:ReturnType<typeof setTimeout>,attempt=0;
@@ -41,9 +42,23 @@ export function ArenaClient(){
         if(saved){try{ws.send(JSON.stringify({type:'resume',credential:JSON.parse(saved)}));}catch{sessionStorage.removeItem(seatStorageKey(endpoint));}}
         else ws.send(JSON.stringify({type:'listRooms'}));
       };
-      let hydrated=false;
+      let hydrated=false,lastMessageAt=Date.now();
+      const health=setInterval(()=>{
+        if(closed||socket.current!==ws||ws.readyState!==WebSocket.OPEN)return;
+        const recovery=connectionRecovery(Date.now(),lastMessageAt,pendingCommand.current?.sentAt);
+        if(recovery==='reconnect'){
+          setError('连接响应超时，正在恢复座位…');ws.close();return;
+        }
+        if(recovery==='retry'&&hydrated&&pendingCommand.current){
+          pendingCommand.current.sentAt=Date.now();
+          ws.send(JSON.stringify({type:'command',command:pendingCommand.current.command}));
+          ws.send(JSON.stringify({type:'resync'}));
+        }else if(recovery==='probe')ws.send(JSON.stringify({type:hydrated?'resync':'listRooms'}));
+      },5000);
+      ws.addEventListener('close',()=>clearInterval(health));
       ws.onmessage=e=>{
         if(closed||socket.current!==ws)return;
+        lastMessageAt=Date.now();
         let message:ArenaServerMessage;try{message=JSON.parse(e.data);}catch{setError('服务器返回了无效消息。');return;}
         if(!message||typeof message.type!=='string')return;
         if(message.type==='rooms'&&Array.isArray(message.rooms))setRooms(message.rooms);
@@ -52,9 +67,9 @@ export function ArenaClient(){
           const first=roomRef.current?.matchId!==message.room.matchId;
           roomRef.current=message.room;setRoom(message.room);
           if(first||!hydrated){hydrated=true;lastSequence.current=message.room.snapshot?.lastEventSequence??0;setEvents([]);setAnimationBaseline(old=>({epoch:old.epoch+1,sequence:lastSequence.current}));}
-          if(message.room.status==='failed')setPending(false);
+          if(message.room.status==='failed'){pendingCommand.current=null;setPending(false);}
           // A reconnect reuses the command ID; the server ledger decides whether it already ran.
-          if(pendingCommand.current && !pendingCommand.current.sent){pendingCommand.current.sent=true;ws.send(JSON.stringify({type:'command',command:pendingCommand.current.command}));}
+          if(pendingCommand.current && !pendingCommand.current.sent){pendingCommand.current.sent=true;pendingCommand.current.sentAt=Date.now();ws.send(JSON.stringify({type:'command',command:pendingCommand.current.command}));}
         }
         if(message.type==='event' && message.matchId===roomRef.current?.matchId && message.event.sequence>lastSequence.current){
           lastSequence.current=message.event.sequence;setEvents(old=>[...old.slice(-31),message.event]);
@@ -63,7 +78,7 @@ export function ArenaClient(){
           if(message.receipt.commandId===pendingCommand.current?.command.commandId){pendingCommand.current=null;setPending(false);}
           if(message.receipt.status!=='accepted')setError(message.receipt.status==='resync'?'对局状态已更新，请重新选择。':'该操作已失效或不适用于当前窗口。');
         }
-        if(message.type==='error'){setError(message.message);setPending(false);if(message.message.includes('无法恢复座位')){sessionStorage.removeItem(seatStorageKey(endpoint));setRoom(null);roomRef.current=null;pendingCommand.current=null;ws.send(JSON.stringify({type:'listRooms'}));}}
+        if(message.type==='error'){setError(message.message);setPending(!!pendingCommand.current);if(message.message.includes('无法恢复座位')){sessionStorage.removeItem(seatStorageKey(endpoint));setRoom(null);roomRef.current=null;pendingCommand.current=null;ws.send(JSON.stringify({type:'listRooms'}));}}
       };
       ws.onclose=e=>{
         if(closed||socket.current!==ws)return;
@@ -81,7 +96,7 @@ export function ArenaClient(){
   function command(operation:string,parameters:Record<string,unknown>={}){
     if(!room||pendingCommand.current||pending||!connected||room.status!=='playing'||coinPending)return;
     const command:Command={protocolVersion:1,matchId:room.matchId,playerId:room.playerId,commandId:crypto.randomUUID(),expectedRevision:room.revision,operation,parameters};
-    pendingCommand.current={command,sent:true};setPending(true);send({type:'command',command});
+    pendingCommand.current={command,sent:true,sentAt:Date.now()};setPending(true);send({type:'command',command});
   }
   function selectCard(card:ArenaCard){if(room?.prompt?.kind==='input')command('selectCard',{requestId:room.prompt.requestId,cardId:card.id});}
   useEffect(()=>{
