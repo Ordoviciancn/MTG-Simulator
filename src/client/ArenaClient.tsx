@@ -79,7 +79,7 @@ export function ArenaClient(){
   }
   function send(value:unknown){if(socket.current?.readyState===WebSocket.OPEN){setError('');socket.current.send(JSON.stringify(value));}}
   function command(operation:string,parameters:Record<string,unknown>={}){
-    if(!room||pending||!connected||room.status!=='playing'||coinPending)return;
+    if(!room||pendingCommand.current||pending||!connected||room.status!=='playing'||coinPending)return;
     const command:Command={protocolVersion:1,matchId:room.matchId,playerId:room.playerId,commandId:crypto.randomUUID(),expectedRevision:room.revision,operation,parameters};
     pendingCommand.current={command,sent:true};setPending(true);send({type:'command',command});
   }
@@ -90,14 +90,15 @@ export function ArenaClient(){
       const target=e.target instanceof Element?e.target:null;
       const intent=arenaKeyboardIntent({key:e.key,code:e.code,repeat:e.repeat,composing:e.isComposing,modified:e.altKey||e.ctrlKey||e.metaKey||e.shiftKey,
         interactive:!!target?.closest('button,input,textarea,select,a[href],[contenteditable]:not([contenteditable="false"]),[role="button"]'),
-        overlay:!!zone||coinPending,ready:connected&&!pending&&room?.status==='playing'&&!room.snapshot?.gameOver,prompt:room?.prompt??undefined});
+        overlay:!!zone||coinVisible,ready:connected&&!pending&&room?.status==='playing'&&!room.snapshot?.gameOver,prompt:room?.prompt??undefined});
       if(intent==='confirm'&&room?.prompt){e.preventDefault();command('ok',{requestId:room.prompt.requestId});}
       if(intent==='dismiss'){e.preventDefault();setPreview(null);setZone(null);}
     };
     window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);
   },[room,pending,connected,zone,coinDone]);
   const state=room?.snapshot,you=state?.players.find(p=>p.id===room?.playerId),opponent=state?.players.find(p=>p.id!==room?.playerId);
-  const coinPending=!!room&&state?.gameNumber===1&&state.phase==='null'&&state.coinWinnerSeat!=null&&coinDone!==room.matchId;
+  const coinVisible=!!room&&state?.gameNumber===1&&state.coinChoicePending===true;
+  const coinPending=coinVisible&&coinDone!==room?.matchId;
   const finishCoin=useCallback(()=>setCoinDone(room?.matchId??null),[room?.matchId]);
   const canSelect=connected&&!pending&&!coinPending&&room?.prompt?.kind==='input';
   const cardDrag=useCardDrag(!!canSelect,selectCard);
@@ -107,11 +108,11 @@ export function ArenaClient(){
   const prompt=room?.prompt?{...room.prompt,okLabel:label(room.prompt.okLabel??''),cancelLabel:label(room.prompt.cancelLabel??'')}:undefined;
   return <main className="forge-app">
     <ArenaAtmosphere/>
-    {cardDrag.drag&&<div className={`forge-drag-card ${cardDrag.drag.returning?'returning':''}`} aria-hidden="true" style={{left:cardDrag.drag.originX+cardDrag.drag.x-cardDrag.drag.startX,top:cardDrag.drag.originY+cardDrag.drag.y-cardDrag.drag.startY,width:cardDrag.drag.width,height:cardDrag.drag.height}}><img src={imageUrl(cardDrag.drag.card)} alt=""/><i/></div>}
+    {cardDrag.drag&&<div className={`forge-drag-card ${cardDrag.drag.returning?'returning':''}`} aria-hidden="true" style={{left:cardDrag.drag.originX,top:cardDrag.drag.originY,translate:`${cardDrag.drag.x-cardDrag.drag.startX}px ${cardDrag.drag.y-cardDrag.drag.startY}px`,width:cardDrag.drag.width,height:cardDrag.drag.height}}><img src={imageUrl(cardDrag.drag.card)} alt=""/><i/></div>}
     {!room?<ArenaLobby connected={connected} name={name} onName={setName} deck={deck} onDeck={setDeck} bestOf={bestOf} onBestOf={setBestOf} endpoint={endpoint} defaultEndpoint={defaultEndpoint} onConnect={connectServer} rooms={rooms} onRefresh={()=>send({type:"listRooms"})} onCreate={()=>send({type:"create",name,deckText:deck,bestOf})} onJoin={code=>send({type:"join",code,name,deckText:deck})} error={error}/>:<>
       <header className="forge-top"><span>对局 {room.code}</span><span>{connected?'已连接':'正在重新连接…'}</span><button onClick={()=>setAnimationSkip(value=>value+1)}>跳过动画</button><button onClick={()=>setAnimationSpeed(value=>value===1?2:1)}>动画 {animationSpeed}×</button><button onClick={()=>{sessionStorage.removeItem(seatStorageKey(endpoint));connectServer(endpoint);}}>返回大厅</button></header>
       {state?.bestOf===3&&<div className="forge-match-score">BO3 · 第 {state.gameNumber} 局 · {you?.name} {state.scores?.[room.seat]??0} : {state.scores?.[1-room.seat]??0} {opponent?.name}{state.matchOver?' · 比赛结束':''}</div>}
-      {coinPending&&<CoinToss winner={state!.players[state!.coinWinnerSeat!]?.name??'牌手'} onComplete={finishCoin}/>}
+      {coinVisible&&<CoinToss winner={state!.players[state!.coinWinnerSeat!]?.name??'牌手'} onComplete={finishCoin}>{room.seat===state!.coinWinnerSeat?<fieldset disabled={coinPending||pending||!connected}><p>{pending?'正在确认选择…':'选择先手或后手'}</p><button disabled={!prompt?.okEnabled} onClick={()=>prompt&&command('ok',{requestId:prompt.requestId})}>{prompt?.okLabel||'先手'}</button><button disabled={!prompt?.cancelEnabled} onClick={()=>prompt&&command('cancel',{requestId:prompt.requestId})}>{prompt?.cancelLabel||'后手'}</button></fieldset>:<p>等待对手选择先后手</p>}</CoinToss>}
       {!state?<section className="forge-wait"><h1>{room.status==='waiting'?'等待对手':'正在准备对局'}</h1><p>房间码：{room.code}</p></section>:<>
         <section className="forge-board" onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();const id=e.dataTransfer.getData('text/plain');const card=you?.hand.find(c=>c.id===id);if(card)selectCard(card);}}>
           <div className="forge-enemy-hand">{Array.from({length:opponent?.handCount??0},(_,i)=><img key={i} src="/mtg-card-back.png" alt="对手手牌" style={{transform:`rotate(${(i-((opponent?.handCount??1)-1)/2)*4}deg)`}}/>)}</div>

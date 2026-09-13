@@ -7,6 +7,8 @@ import type {ArenaCredential,ArenaRoomView,ArenaServerMessage} from '../src/shar
 import type {Command,CommandReceipt} from '../src/shared/matchProtocol';
 
 process.env.FORGE_TEST_SEED='42';
+let viewMessages=0;
+const commandTimes:number[]=[];
 const complete=process.argv.includes('--complete');
 const combat=process.argv.includes('--combat');
 const numeric=process.argv.includes('--x');
@@ -20,7 +22,7 @@ class Client {
   view?:ArenaRoomView;credential?:ArenaCredential;errors:string[]=[];events:string[]=[];
   receipts=new Map<string,CommandReceipt>();
   constructor(){this.ws.on('message',raw=>{const message=JSON.parse(raw.toString()) as ArenaServerMessage;
-    if(message.type==='view'){this.view=message.room;if(message.room.status==='failed')console.error(message.room.error);}
+    if(message.type==='view'){viewMessages++;this.view=message.room;if(message.room.status==='failed')console.error(message.room.error);}
     if(message.type==='credential')this.credential=message.credential;
     if(message.type==='error')this.errors.push(message.message);
     if(message.type==='event')this.events.push(message.event.kind);
@@ -29,7 +31,7 @@ class Client {
   send(message:unknown){this.ws.send(JSON.stringify(message));}
   async command(operation:string,parameters:Record<string,unknown>,identity?:string){
     const v=this.view!;const command:Command={protocolVersion:1,matchId:v.matchId,playerId:identity??v.playerId,commandId:crypto.randomUUID(),expectedRevision:v.revision,operation,parameters};
-    this.send({type:'command',command});await wait(()=>this.receipts.has(command.commandId));
+    const started=performance.now();this.send({type:'command',command});await wait(()=>this.receipts.has(command.commandId));commandTimes.push(performance.now()-started);
     return {command,receipt:this.receipts.get(command.commandId)!};
   }
 }
@@ -46,6 +48,7 @@ try {
   assert.equal(clients[2].view,undefined);
   clients[1].send({type:'join',code,name:'Human B',deckText});
   await wait(()=>clients.some(c=>c.view?.prompt),120000);
+  assert.ok(clients.slice(0,2).every(c=>c.view?.snapshot?.coinChoicePending),'Coin stays visible while play/draw is pending');
   let resolved=false,verifiedDuplicate=false,blocked=false,summoningChecked=false,numericChosen=false;
   let ordered:{seat:number;name:string;handIds:string[]}|undefined;
   const done=(c:Client)=>manland?c.view?.snapshot?.players.some(p=>p.battlefield.some(card=>card.name===spellName&&card.kind==='creature')):scry?ordered&&c.view?.seat===ordered.seat&&c.view.snapshot?.players[ordered.seat].hand.some(card=>!ordered!.handIds.includes(card.id))&&c.view.snapshot.players[ordered.seat].graveyard.some(card=>card.name===spellName):combat?blocked&&c.view?.snapshot?.players.some(p=>p.life<20):complete?c.view?.snapshot?.gameOver:c.view?.snapshot?.players.some(p=>p.life===(numeric?19:17));
@@ -111,6 +114,7 @@ try {
   await wait(()=>clients[0].view?.snapshot?.stack.length===0&&clients[0].view?.snapshot?.players.some(p=>p.graveyard.some(c=>c.name===spellName)));
   if(!scry)assert.ok(clients[0].events.includes('life'));assert.ok(clients[0].events.includes('cast'));assert.ok(clients[0].events.includes('resolve'));
   const credential=clients[0].credential!,before=clients[0].view!.snapshot!;
+  assert.equal(before.coinChoicePending,false,'Only the accepted play/draw decision dismisses the coin');
   clients[0].ws.close();await once(clients[0].ws,'close');
   const resumed=new Client();clients.push(resumed);await once(resumed.ws,'open');resumed.send({type:'resume',credential});await wait(()=>resumed.view);
   assert.deepEqual(resumed.view!.snapshot?.players.map(p=>p.life),before.players.map(p=>p.life));
@@ -121,5 +125,6 @@ try {
   console.log(JSON.stringify({engine:'forge',networkSpellResolved:!combat,combatBlockedAndDamaged:combat&&blocked,xValuePaidAndResolved:numeric&&numericChosen,scryOrderedAndDrawn:scry&&!!ordered,seatImpersonationRejected:true,duplicateReceiptStable:true,semanticEvents:true,reconnect:true,completedDamageMatch:complete,fullGameVerified:false}));
   }
 }finally{
+  if(process.argv.includes('--profile'))console.log(JSON.stringify({viewMessages,commands:commandTimes.length,medianAckMs:[...commandTimes].sort((a,b)=>a-b)[Math.floor(commandTimes.length/2)]}));
   for(const client of clients)client.ws.close();await rooms.close();wss.close();server.close();
 }

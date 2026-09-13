@@ -38,6 +38,7 @@ class ForgeRoom {
   readonly ledger=new CommandLedger(this.id);
   readonly projections=[0,1].map(seat=>new ForgeProjection(seat,()=>this.members.map(p=>p.id)));
   readonly snapshots:(ArenaSnapshot|null)[]=[null,null];
+  private readonly lastStates:(string|undefined)[]=[];
   readonly prompts:(ForgePrompt|null)[]=[null,null];
   readonly fullControl=[false,false];
   readonly pending=new Map<string,{resolve:(accepted:boolean)=>void;reject:(error:Error)=>void;timer:ReturnType<typeof setTimeout>}>();
@@ -89,6 +90,9 @@ class ForgeRoom {
       for(const [ws,bound] of this.clients)if(bound===seat)send(ws,{type:'event',matchId:this.id,event});return;
     }
     if(message.type==='state'){
+      const fingerprint=JSON.stringify(message);
+      if(this.lastStates[seat]===fingerprint)return;
+      this.lastStates[seat]=fingerprint;
       this.snapshots[seat]=this.projections[seat].snapshot(message);this.status='playing';
     }else if(message.type==='prompt'){
       if(!['input','choice','order','number','sideboard','unsupported'].includes(String(message.kind)))throw new Error('Invalid Forge prompt.');

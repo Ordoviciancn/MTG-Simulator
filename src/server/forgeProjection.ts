@@ -37,7 +37,7 @@ export class ForgeProjection {
       const attackerId=this.handles.get(raw.attackerId);if(!attackerId)continue;
       combat.push({attackerId,blockerIds:raw.blockerIds.map(id=>this.handles.get(id)).filter((id):id is string=>!!id),defenderPlayerId:this.playerIds.get(raw.defenderPlayerId!),defenderCardId:this.handles.get(raw.defenderCardId!)});
     }
-    return {players:projected,stack,combat,phase:String(message.phase),activePlayerId:this.playerIds.get(Number(message.activePlayerId))??null,gameOver:message.gameOver===true,lastEventSequence:Number(message.lastEventSequence??0),gameNumber:Number(message.gameNumber??1),bestOf:message.bestOf===3?3:1,scores:Array.isArray(message.scores)?message.scores.map(Number):[0,0],matchOver:message.matchOver===true,coinWinnerSeat:message.coinWinnerSeat===0||message.coinWinnerSeat===1?message.coinWinnerSeat:null};
+    return {players:projected,stack,combat,phase:String(message.phase),activePlayerId:this.playerIds.get(Number(message.activePlayerId))??null,gameOver:message.gameOver===true,lastEventSequence:Number(message.lastEventSequence??0),gameNumber:Number(message.gameNumber??1),bestOf:message.bestOf===3?3:1,scores:Array.isArray(message.scores)?message.scores.map(Number):[0,0],matchOver:message.matchOver===true,coinChoicePending:message.coinChoicePending===true,coinWinnerSeat:message.coinWinnerSeat===0||message.coinWinnerSeat===1?message.coinWinnerSeat:null};
   }
   event(message:ForgeMessage):ArenaEvent {
     const raw=message.data as Record<string,unknown>,data:ArenaEvent['data']={};

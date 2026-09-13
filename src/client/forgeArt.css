@@ -57,3 +57,16 @@
 @keyframes forge-coin-shadow{35%{transform:scale(.4);opacity:.25}100%{transform:scale(1);opacity:1}}
 .forge-sideboard-input{width:min(650px,88vw);right:50%;transform:translateX(50%);bottom:8vh;max-height:76vh;z-index:35}.forge-sideboard-input .forgeChoices{grid-template-columns:repeat(3,minmax(0,1fr))}.forge-sideboard-input .forgeChoices button{text-align:left;font-size:11px}
 @media(max-width:700px){.forge-sideboard-input .forgeChoices{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* Bevels keep the target's geometry fixed while separating its light and shadow planes. */
+.forge-avatar-crest{inset:-36px -33px auto;width:166px;height:166px;filter:drop-shadow(0 7px 4px #000a)}
+.crest-depth{fill:#251f19;stroke:#100f10;stroke-width:3;stroke-linejoin:round}
+.crest-ring{stroke-width:8}.crest-wings{stroke:#ebce9a;stroke-width:1.2}
+.forge-app .forge-avatar{border:3px ridge #dac097;box-shadow:inset 0 3px 6px #fff3,inset 0 -8px 14px #000b,0 4px 0 #30291e,0 8px 0 #171c20,0 14px 22px #000a}
+.forge-avatar strong{border:3px ridge #d9c8a1;background:linear-gradient(145deg,#6c7476,#26323a 42%,#101b24 65%,#4a4e48);box-shadow:inset 0 2px 2px #fff5,inset 0 -3px 5px #000b,0 3px 0 #4c3b25,0 6px 0 #17191e,0 9px 12px #000a;text-shadow:0 2px #000}
+.forge-drag-card{will-change:translate,transform}
+.forge-drag-card.returning{transition:translate .22s cubic-bezier(.2,.8,.2,1),transform .22s}
+.forge-coin-overlay.landed .forge-coin{animation:none;transform:translateY(0) rotateY(0)}
+.forge-coin-choice fieldset{border:0;margin:0;padding:0;display:flex;gap:16px;flex-wrap:wrap;justify-content:center}
+.forge-coin-choice fieldset p{width:100%}.forge-coin-choice button{min-width:120px;padding:12px 28px;border:1px solid #dab975;background:linear-gradient(#725c39,#34291c);box-shadow:inset 0 1px #ffe7b555,0 4px 10px #0008;color:#fff0d1}
+@media(prefers-reduced-motion:reduce){.forge-coin,.coin-shadow{animation:none}.forge-drag-card.returning{transition:none}}
