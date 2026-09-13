@@ -114,6 +114,9 @@ try {
     }
   }
   assert.equal(resolved,true);
+  const history=clients[0].view!.recentStackEvents??[];
+  assert.ok(history.some(event=>event.kind==='cast'&&event.data.name===spellName),'Fast resolution retains the cast record');
+  assert.ok(history.some(event=>event.kind==='cast'&&typeof event.data.ability==='boolean'),'Stack events distinguish spells and abilities');
   if(cardTarget){assert.equal(abilityPromptSeen,false,'Target selection must not open Choose ability');console.log(JSON.stringify({engine:'forge',cardTargetResolved:true,abilityPromptSeen:false,fullGameVerified:false}));}
   else if(manland){
     const creature=clients[0].view!.snapshot!.players.flatMap(p=>p.battlefield).find(c=>c.name===spellName&&c.kind==='creature');
@@ -128,6 +131,7 @@ try {
   const resumed=new Client();clients.push(resumed);await once(resumed.ws,'open');resumed.send({type:'resume',credential});await wait(()=>resumed.view);
   assert.deepEqual(resumed.view!.snapshot?.players.map(p=>p.life),before.players.map(p=>p.life));
   assert.equal(resumed.view!.playerId,credential.playerId);
+  assert.deepEqual(resumed.view!.recentStackEvents,clients[0].view!.recentStackEvents,'Reconnect retains the visible stack history');
   if(combat){assert.equal(blocked,true);assert.equal(summoningChecked,true);assert.ok(clients[0].events.includes('combat'));assert.ok(clients[0].view!.snapshot!.players.every(p=>p.graveyard.some(c=>c.name==='Grizzly Bears')));assert.ok(clients[0].view!.snapshot!.players.some(p=>p.life===18));}
   if(numeric){assert.equal(numericChosen,true);assert.ok(before.players.some(p=>p.battlefield.filter(c=>c.tapped&&c.kind==='land').length===2));}
   if(scry){assert.ok(ordered);assert.equal(clients[ordered.seat].view!.snapshot!.players[ordered.seat].hand.find(c=>!ordered!.handIds.includes(c.id))?.name,ordered.name);}

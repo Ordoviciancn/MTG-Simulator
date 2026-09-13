@@ -8,6 +8,8 @@ import { ForgeProcess, type ForgeMessage } from './forgeProcess';
 import { ForgeProjection } from './forgeProjection';
 import { prepareForgeLaunch } from './forgeRuntime';
 import { validateForgeDecision } from './forgeDecisions';
+import {appendStackEvent} from '../shared/stackHistory';
+import type {ArenaEvent} from '../shared/arenaProtocol';
 
 type Member={id:string;token:string;name:string;deck:{name:string;count:number}[];sideboard:{name:string;count:number}[]};
 const send=(socket:WebSocket,message:ArenaServerMessage)=>{
@@ -41,6 +43,7 @@ class ForgeRoom {
   private readonly lastStates:(string|undefined)[]=[];
   readonly prompts:(ForgePrompt|null)[]=[null,null];
   readonly fullControl=[false,false];
+  readonly recentStackEvents:ArenaEvent[][]=[[],[]];
   readonly pending=new Map<string,{resolve:(accepted:boolean)=>void;reject:(error:Error)=>void;timer:ReturnType<typeof setTimeout>}>();
   revision=0;
   status:ArenaRoomView['status']='waiting';
@@ -50,7 +53,7 @@ class ForgeRoom {
   expiry?:ReturnType<typeof setTimeout>;
   closed=false;
   constructor(readonly code:string,private root:string,private remove:()=>void,readonly bestOf:1|3=1){}
-  view(seat:number):ArenaRoomView {return {matchId:this.id,code:this.code,playerId:this.members[seat].id,seat,revision:this.revision,status:this.status,snapshot:this.snapshots[seat],prompt:this.prompts[seat],fullControl:this.fullControl[seat],error:this.error};}
+  view(seat:number):ArenaRoomView {return {matchId:this.id,code:this.code,playerId:this.members[seat].id,seat,revision:this.revision,status:this.status,snapshot:this.snapshots[seat],prompt:this.prompts[seat],fullControl:this.fullControl[seat],error:this.error,recentStackEvents:this.recentStackEvents[seat]};}
   broadcast(){for(const [ws,seat] of this.clients)send(ws,{type:'view',room:this.view(seat)});}
   bind(ws:WebSocket,seat:number){
     if(this.expiry){clearTimeout(this.expiry);this.expiry=undefined;}
@@ -103,6 +106,7 @@ class ForgeRoom {
     const seat=Number(message.seat);if(seat!==0&&seat!==1)return;
     if(message.type==='semantic'){
       const event=this.projections[seat].event(message);
+      this.recentStackEvents[seat]=appendStackEvent(this.recentStackEvents[seat],event);
       for(const [ws,bound] of this.clients)if(bound===seat)send(ws,{type:'event',matchId:this.id,event});return;
     }
     if(message.type==='state'){

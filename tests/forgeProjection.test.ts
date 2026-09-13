@@ -25,6 +25,16 @@ test('semantic projection allowlists public fields instead of serializing engine
   assert.deepEqual(event,{sequence:7,kind:'zone',data:{from:'Library',to:'Hand'}});
 });
 
+test('stack history projects public ability descriptions but strips concealed source text',()=>{
+  const projector=new ForgeProjection(0,()=>['A','B']);
+  const data={cardId:17,name:'Goblin Arsonist',ability:true,description:'Deal 1 damage to any target.',fizzled:false};
+  const event=projector.event({type:'semantic',sequence:1,kind:'resolve',data});
+  assert.equal(event.data.description,data.description);assert.equal(event.data.ability,true);
+  for(const raw of [{description:'Secret card'},{cardId:17,name:'Face-down card',description:'Secret card'}]){
+    assert.equal(projector.event({type:'semantic',sequence:2,kind:'cast',data:raw}).data.description,undefined);
+  }
+});
+
 test('combat references resolve only to cards present in the observer projection',()=>{
   const projector=new ForgeProjection(0,()=>['A','B']);
   const p=(id:number)=>({id,name:'Player',life:20,hand:[],handCount:0,libraryCount:50,battlefield:[{id:id+10,ownerId:id,name:'Grizzly Bears',kind:'creature'}],graveyard:[],exile:[]});

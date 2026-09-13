@@ -4,6 +4,8 @@ import type {Command} from '../shared/matchProtocol';
 import {connectionRecovery} from './connectionRecovery';
 import {ForgeControls} from './ForgeControls';
 import {SemanticCanvas} from './SemanticCanvas';
+import {StackPanel} from './StackPanel';
+import {appendStackEvent} from '../shared/stackHistory';
 import {CombatLines} from './CombatLines';
 import {arenaKeyboardIntent} from './arenaKeyboard';
 import {ArenaAtmosphere,AvatarCrest} from './ArenaAtmosphere';
@@ -74,6 +76,7 @@ export function ArenaClient(){
         }
         if(message.type==='event' && message.matchId===roomRef.current?.matchId && message.event.sequence>lastSequence.current){
           lastSequence.current=message.event.sequence;setEvents(old=>[...old.slice(-31),message.event]);
+          if(message.event.kind==='cast'||message.event.kind==='resolve')setRoom(old=>old?.matchId===message.matchId?{...old,recentStackEvents:appendStackEvent(old.recentStackEvents??[],message.event)}:old);
         }
         if(message.type==='receipt'){
           if(message.receipt.commandId===pendingCommand.current?.command.commandId){pendingCommand.current=null;setPending(false);}
@@ -138,7 +141,7 @@ export function ArenaClient(){
             <aside className="forge-zones"><div className="forge-library"><img src="/mtg-card-back.png" alt="牌库"/><span>{p.libraryCount}</span></div>{(['graveyard','exile'] as const).map(z=><button key={z} onClick={()=>setZone({title:z==='graveyard'?'坟场':'放逐区',cards:p[z]})}>{z==='graveyard'?'坟场':'放逐'} <b>{p[z].length}</b></button>)}</aside>
           </section>)}
           <div className="forge-phase">{state.gameOver?'对局结束':phaseLabel(state.phase)}</div>
-          <aside className="forge-stack" aria-label="堆叠">{state.stack.map(c=>cardNode(c))}</aside>
+          <StackPanel key={room.matchId} cards={state.stack} history={room.recentStackEvents??[]} players={state.players} onInspect={setPreview} onDismiss={()=>setPreview(null)} onSelect={card=>card.actionable?selectCard(card):setPreview(card)}/>
           <CombatLines combat={state.combat??[]}/>
         </section>
         <div className="forge-hand" aria-label="手牌">{you?.hand.map((c,i)=>{const offset=i-(you.hand.length-1)/2;return cardNode(c,{'--fan-angle':`${Math.max(-13,Math.min(13,offset*3))}deg`,'--fan-y':`${Math.abs(offset)**1.6*2}px`,zIndex:i} as CSSProperties);})}</div>

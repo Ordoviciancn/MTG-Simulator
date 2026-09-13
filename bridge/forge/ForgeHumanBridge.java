@@ -202,6 +202,8 @@ public final class ForgeHumanBridge {
                 if(card!=null)data.putIfAbsent("playerId",card.getController().getId());
                 if(card!=null && card.canBeShownTo(seat.player.getView()) && (!card.isFaceDown() || card.mayPlayerLook(seat.player.getView()))) {
                     data.put("cardId",card.getId());data.put("name",card.getCurrentState().getName());
+                    if(event instanceof GameEventSpellAbilityCast e){data.put("ability",!e.sa().isSpell());data.put("description",e.sa().getDescription());}
+                    if(event instanceof GameEventSpellResolved e){data.put("ability",!e.spell().isSpell());data.put("description",e.spell().getDescription());}
                 }
                 emit(obj("type","semantic","seat",seat.index,"sequence",sequence,"kind",kind,"data",data));
             }
@@ -229,7 +231,7 @@ public final class ForgeHumanBridge {
     static void states() {
         if(game==null)return;
         for(Seat seat:SEATS) {if(seat==null)continue; List<Object> players=new ArrayList<>();for(Player p:game.getRegisteredPlayers())players.add(obj("id",p.getId(),"name",p.getName(),"life",p.getLife(),"libraryCount",p.getCardsIn(ZoneType.Library).size(),"handCount",p.getCardsIn(ZoneType.Hand).size(),"hand",p==seat.player?zone(p,ZoneType.Hand,seat.player):List.of(),"battlefield",zone(p,ZoneType.Battlefield,seat.player),"graveyard",zone(p,ZoneType.Graveyard,seat.player),"exile",zone(p,ZoneType.Exile,seat.player)));
-            List<Object> stack=new ArrayList<>();for(var item:game.getStack()) {Map<String,Object> projected=card(item.getSourceCard(),seat.player);projected.put("stackId",item.getId());projected.put("ability",item.getSpellAbility().isAbility());stack.add(projected);}
+            List<Object> stack=new ArrayList<>();for(var item:game.getStack()) {Map<String,Object> projected=card(item.getSourceCard(),seat.player);projected.put("stackId",item.getId());projected.put("ability",!item.getSpellAbility().isSpell());if(!"Face-down card".equals(projected.get("name")))projected.put("description",item.getSpellAbility().getView().getDescription());stack.add(projected);}
             Player active=game.getPhaseHandler().getPlayerTurn();emit(obj("type","state","seat",seat.index,"players",players,"stack",stack,"combat",combat(),"lastEventSequence",EVENTS.get(),"phase",String.valueOf(game.getPhaseHandler().getPhase()),"activePlayerId",active==null?null:active.getId(),"gameOver",game.isGameOver(),"gameNumber",gameNumber,"bestOf",match.getRules().getGamesPerMatch(),"scores",match.getPlayers().stream().map(p->match.getGamesWonBy(p.getPlayer())).toList(),"matchOver",match.isMatchOver(),"coinWinnerSeat",coinWinnerSeat,"coinChoicePending",coinChoicePending)); }
     }
     static void init(JsonObject input) {
