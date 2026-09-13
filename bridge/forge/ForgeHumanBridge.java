@@ -65,7 +65,9 @@ public final class ForgeHumanBridge {
         boolean okEnabled,cancelEnabled;
         String okLabel="OK",cancelLabel="Cancel";
         Object inputIdentity;
-        final Set<Integer> actionable=ConcurrentHashMap.newKeySet();
+        final Set<Integer> strongSelectables=ConcurrentHashMap.newKeySet();
+        final Set<Integer> weakSelectables=ConcurrentHashMap.newKeySet();
+        volatile boolean strongSelectionActive;
         final java.util.concurrent.atomic.AtomicBoolean inputQueued=new java.util.concurrent.atomic.AtomicBoolean();
         Seat(int index,Player player) { this.index=index;this.player=player;controller=(PlayerControllerHuman)player.getController(); }
         void input() {
@@ -125,8 +127,10 @@ public final class ForgeHumanBridge {
                 case "getDayTime": return "";
                 case "getGamestate": return null;
                 case "awaitNextInput": closeInput();return null;
-                case "setWeaklySelectable": actionable.clear();for(Object c:(Iterable<?>)a[0])actionable.add(((CardView)c).getId());return null;
-                case "clearWeaklySelectable": actionable.clear();return null;
+                case "setSelectables": strongSelectionActive=true;strongSelectables.clear();for(Object c:(Iterable<?>)a[0])strongSelectables.add(((CardView)c).getId());return null;
+                case "clearSelectables": strongSelectables.clear();strongSelectionActive=false;return null;
+                case "setWeaklySelectable": weakSelectables.clear();for(Object c:(Iterable<?>)a[0])weakSelectables.add(((CardView)c).getId());return null;
+                case "clearWeaklySelectable": weakSelectables.clear();return null;
                 case "showPromptMessage": message=String.valueOf(a[1]);if(gameNumber==1 && message.contains(forge.util.Localizer.getInstance().getMessage("lblYouHaveWonTheCoinToss",player.getName()))){coinWinnerSeat=index;coinChoicePending=true;}input(); return null;
                 case "updateButtons": okLabel=(String)a[1];cancelLabel=(String)a[2];okEnabled=(boolean)a[3];cancelEnabled=(boolean)a[4];input();return null;
                 case "getAbilityToPlay": {List<?> abilities=(List<?>)a[1];return abilities.size()==1?abilities.get(0):chooseList("Choose ability",abilities,1,1).get(0);}
@@ -205,7 +209,7 @@ public final class ForgeHumanBridge {
     }
     static Map<String,Object> card(Card c,Player viewer) {
         Map<String,Object> out=obj("id",c.getId(),"ownerId",c.getOwner().getId(),"controllerId",c.getController().getId(),"tapped",c.isTapped());
-        for(Seat seat:SEATS)if(seat!=null && seat.player==viewer)out.put("actionable",seat.actionable.contains(c.getId()));
+        for(Seat seat:SEATS)if(seat!=null && seat.player==viewer)out.put("actionable",(seat.strongSelectionActive?seat.strongSelectables:seat.weakSelectables).contains(c.getId()));
         if(!c.getView().canBeShownTo(viewer.getView()) || (c.isFaceDown() && !c.getView().mayPlayerLook(viewer.getView()))) { out.put("name","Face-down card");out.put("kind","spell");return out; }
         out.put("name",c.getName());out.put("kind",c.isCreature()?"creature":c.isLand()?"land":"spell");
         if(c.isCreature()){out.put("power",c.getNetPower());out.put("toughness",c.getNetToughness());} return out;

@@ -99,7 +99,7 @@ export function ArenaClient(){
     const command:Command={protocolVersion:1,matchId:room.matchId,playerId:room.playerId,commandId:crypto.randomUUID(),expectedRevision:room.revision,operation,parameters};
     pendingCommand.current={command,sent:true,sentAt:Date.now()};setPending(true);send({type:'command',command});
   }
-  function selectCard(card:ArenaCard){if(room?.prompt?.kind==='input')command('selectCard',{requestId:room.prompt.requestId,cardId:card.id});}
+  function selectCard(card:ArenaCard){if(room?.prompt?.kind==='input'&&card.actionable)command('selectCard',{requestId:room.prompt.requestId,cardId:card.id});}
   useEffect(()=>{
     const key=(e:KeyboardEvent)=>{
       if(e.defaultPrevented)return;

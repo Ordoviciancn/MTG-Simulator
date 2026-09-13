@@ -14,6 +14,7 @@ const combat=process.argv.includes('--combat');
 const numeric=process.argv.includes('--x');
 const scry=process.argv.includes('--scry');
 const manland=process.argv.includes('--manland');
+const cardTarget=process.argv.includes('--card-target');
 const server=createServer(),wss=new WebSocketServer({server}),rooms=createForgeRooms(process.cwd());
 wss.on('connection',rooms);server.listen(0,'127.0.0.1');await once(server,'listening');
 const port=(server.address() as {port:number}).port;
@@ -39,9 +40,9 @@ async function wait(condition:()=>unknown,timeout=20000){const start=Date.now();
 const clients=[new Client(),new Client(),new Client()];
 try {
   await Promise.all(clients.map(c=>once(c.ws,'open')));
-  const spellName=manland?"Mishra's Factory":scry?'Preordain':numeric?'Blaze':combat?'Grizzly Bears':'Lightning Bolt';
+  const spellName=cardTarget?'Shock':manland?"Mishra's Factory":scry?'Preordain':numeric?'Blaze':combat?'Grizzly Bears':'Lightning Bolt';
   const landName=scry?'Island':combat?'Forest':'Mountain';
-  const deckText=`30 ${landName}\n30 ${spellName}`;
+  const deckText=cardTarget?`24 Mountain\n18 Goblin Arsonist\n18 Shock`:`30 ${landName}\n30 ${spellName}`;
   clients[0].send({type:'create',name:'Human A',deckText});await wait(()=>clients[0].credential);
   const code=clients[0].credential!.code;
   clients[2].send({type:'resume',credential:{...clients[0].credential,token:'wrong'}});await wait(()=>clients[2].errors.length);
@@ -49,22 +50,24 @@ try {
   clients[1].send({type:'join',code,name:'Human B',deckText});
   await wait(()=>clients.some(c=>c.view?.prompt),120000);
   assert.ok(clients.slice(0,2).every(c=>c.view?.snapshot?.coinChoicePending),'Coin stays visible while play/draw is pending');
-  let resolved=false,verifiedDuplicate=false,blocked=false,summoningChecked=false,numericChosen=false;
+  let resolved=false,verifiedDuplicate=false,blocked=false,summoningChecked=false,numericChosen=false,targetInputSeen=false,abilityPromptSeen=false;
   let ordered:{seat:number;name:string;handIds:string[]}|undefined;
-  const done=(c:Client)=>manland?c.view?.snapshot?.players.some(p=>p.battlefield.some(card=>card.name===spellName&&card.kind==='creature')):scry?ordered&&c.view?.seat===ordered.seat&&c.view.snapshot?.players[ordered.seat].hand.some(card=>!ordered!.handIds.includes(card.id))&&c.view.snapshot.players[ordered.seat].graveyard.some(card=>card.name===spellName):combat?blocked&&c.view?.snapshot?.players.some(p=>p.life<20):complete?c.view?.snapshot?.gameOver:c.view?.snapshot?.players.some(p=>p.life===(numeric?19:17));
+  const done=(c:Client)=>cardTarget?targetInputSeen&&c.view?.snapshot?.players.some(p=>p.graveyard.some(card=>card.name==='Goblin Arsonist'))&&c.view.snapshot.players.some(p=>p.graveyard.some(card=>card.name==='Shock')):manland?c.view?.snapshot?.players.some(p=>p.battlefield.some(card=>card.name===spellName&&card.kind==='creature')):scry?ordered&&c.view?.seat===ordered.seat&&c.view.snapshot?.players[ordered.seat].hand.some(card=>!ordered!.handIds.includes(card.id))&&c.view.snapshot.players[ordered.seat].graveyard.some(card=>card.name===spellName):combat?blocked&&c.view?.snapshot?.players.some(p=>p.life<20):complete?c.view?.snapshot?.gameOver:c.view?.snapshot?.players.some(p=>p.life===(numeric?19:17));
   for(let step=0;step<(complete||combat?250:50)&&!resolved;step++){
     await wait(()=>clients.slice(0,2).some(c=>c.view?.prompt)||clients.some(done));
     const damaged=clients.find(done);
     if(damaged){resolved=true;break;}
     const client=clients.slice(0,2).find(c=>c.view?.prompt)!;
     const room=client.view!,prompt=room.prompt!,state=room.snapshot!;
+    if(prompt.message==='Choose ability')abilityPromptSeen=true;
     if(process.argv.includes('--trace'))console.log(JSON.stringify({step,seat:room.seat,input:prompt.inputType,life:state.players.map(p=>p.life),phase:state.phase,options:prompt.options}));
     assert.equal(state.players.find(p=>p.id!==room.playerId)?.hand.length,0);
     let operation='ok',parameters:Record<string,unknown>={requestId:prompt.requestId};
     if(prompt.inputType==='InputPassPriority'){
       const own=state.players.find(p=>p.id===room.playerId)!;
       const name=own.battlefield.length?'Lightning Bolt':'Mountain';
-      const card=manland?(own.battlefield.length>=2?own.battlefield.find(c=>c.name===spellName):own.hand.find(c=>c.actionable&&c.name===(own.battlefield.some(c=>c.name===landName)?spellName:landName))):complete||combat||numeric||scry?(own.hand.find(c=>c.actionable&&c.name===landName)??own.hand.find(c=>c.actionable&&c.name===spellName&&(!numeric||own.battlefield.filter(c=>c.kind==='land'&&!c.tapped).length>=2))):own.hand.find(c=>c.name===name);
+      const opposingCreature=state.players.find(p=>p.id!==room.playerId)!.battlefield.some(c=>c.kind==='creature');
+      const card=cardTarget?(own.hand.find(c=>c.actionable&&c.name===landName)??own.hand.find(c=>c.actionable&&c.name==='Goblin Arsonist'&&!own.battlefield.some(card=>card.kind==='creature'))??(opposingCreature?own.hand.find(c=>c.actionable&&c.name==='Shock'):undefined)):manland?(own.battlefield.length>=2?own.battlefield.find(c=>c.name===spellName):own.hand.find(c=>c.actionable&&c.name===(own.battlefield.some(c=>c.name===landName)?spellName:landName))):complete||combat||numeric||scry?(own.hand.find(c=>c.actionable&&c.name===landName)??own.hand.find(c=>c.actionable&&c.name===spellName&&(!numeric||own.battlefield.filter(c=>c.kind==='land'&&!c.tapped).length>=2))):own.hand.find(c=>c.name===name);
       if(state.activePlayerId===room.playerId&&card){operation='selectCard';parameters.cardId=card.id;}
     }else if(prompt.inputType==='InputAttack'){
       if(!state.combat.length)operation='cancel';
@@ -73,7 +76,12 @@ try {
       if(state.combat.some(attack=>attack.blockerIds.length))blocked=true;
       if(!blocked){const blocker=state.players.find(p=>p.id===room.playerId)!.battlefield.find(c=>c.kind==='creature'&&!c.tapped);if(blocker){operation='selectCard';parameters.cardId=blocker.id;}}
     }else if(prompt.inputType==='InputSelectTargets'){
-      operation='selectPlayer';parameters.playerId=state.players.find(p=>p.id!==room.playerId)!.id;
+      if(cardTarget){
+        const target=state.players.find(p=>p.id!==room.playerId)!.battlefield.find(c=>c.kind==='creature');
+        assert.ok(target?.actionable,'A legal card target must be projected as actionable');
+        assert.ok(state.players.flatMap(p=>p.battlefield).filter(c=>c.actionable).every(c=>c.kind==='creature'),'Only legal creature targets may be actionable');
+        targetInputSeen=true;operation='selectCard';parameters.cardId=target.id;
+      }else{operation='selectPlayer';parameters.playerId=state.players.find(p=>p.id!==room.playerId)!.id;}
     }else if(prompt.kind==='number'){
       assert.equal(numeric,true);operation='choice';parameters.value=1;
       const other=clients[1-room.seat];
@@ -106,7 +114,8 @@ try {
     }
   }
   assert.equal(resolved,true);
-  if(manland){
+  if(cardTarget){assert.equal(abilityPromptSeen,false,'Target selection must not open Choose ability');console.log(JSON.stringify({engine:'forge',cardTargetResolved:true,abilityPromptSeen:false,fullGameVerified:false}));}
+  else if(manland){
     const creature=clients[0].view!.snapshot!.players.flatMap(p=>p.battlefield).find(c=>c.name===spellName&&c.kind==='creature');
     assert.ok(creature);assert.equal(creature.power,2);assert.equal(creature.toughness,2);
     console.log(JSON.stringify({engine:'forge',animatedLandClassifiedAsCreature:true,fullGameVerified:false}));
