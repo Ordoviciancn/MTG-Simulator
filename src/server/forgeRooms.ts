@@ -48,6 +48,7 @@ class ForgeRoom {
   process?:ForgeProcess;
   cleanup?:()=>Promise<void>;
   expiry?:ReturnType<typeof setTimeout>;
+  closed=false;
   constructor(readonly code:string,private root:string,private remove:()=>void,readonly bestOf:1|3=1){}
   view(seat:number):ArenaRoomView {return {matchId:this.id,code:this.code,playerId:this.members[seat].id,seat,revision:this.revision,status:this.status,snapshot:this.snapshots[seat],prompt:this.prompts[seat],fullControl:this.fullControl[seat],error:this.error};}
   broadcast(){for(const [ws,seat] of this.clients)send(ws,{type:'view',room:this.view(seat)});}
@@ -59,10 +60,22 @@ class ForgeRoom {
   }
   detach(ws:WebSocket){
     this.clients.delete(ws);
+    if(this.closed)return;
     if(!this.clients.size&&!this.expiry){this.expiry=setTimeout(()=>void this.close(),300000);this.expiry.unref();}
   }
-  async close(){this.remove();if(this.expiry)clearTimeout(this.expiry);await this.process?.stop();await this.cleanup?.();}
+  async close(){
+    if(this.closed)return;
+    this.closed=true;this.remove();if(this.expiry)clearTimeout(this.expiry);
+    for(const pending of this.pending.values()){clearTimeout(pending.timer);pending.reject(new Error('Room closed'));}
+    this.pending.clear();
+    await this.process?.stop();await this.cleanup?.();
+  }
+  leave(){
+    for(const ws of this.clients.keys())send(ws,{type:'roomClosed',message:'玩家已退出，对局房间已关闭。'});
+    return this.close();
+  }
   fail(error:Error){
+    if(this.closed)return;
     console.error('[Forge match]',this.id,error);
     this.status='failed';this.error='规则引擎已中断，对局已冻结。请检查服务端诊断。';this.prompts.fill(null);this.revision++;
     for(const pending of this.pending.values()){clearTimeout(pending.timer);pending.reject(error);}this.pending.clear();this.broadcast();
@@ -73,12 +86,15 @@ class ForgeRoom {
     try {
       if(!process.env.JAVA_HOME)throw new Error('服务端尚未设置 JAVA_HOME。');
       const runtime=await prepareForgeLaunch(this.root,process.env.JAVA_HOME);this.cleanup=runtime.cleanup;
+      if(this.closed){await runtime.cleanup();return;}
       this.process=new ForgeProcess(runtime.launch,message=>this.receive(message),error=>this.fail(error));
       await this.process.ready;
+      if(this.closed)return;
       this.process.send({type:'init',bestOf:this.bestOf,players:this.members.map(p=>({name:p.name,deck:p.deck,sideboard:p.sideboard}))});
     }catch(error){this.fail(error as Error);}
   }
   private receive(message:ForgeMessage){
+    if(this.closed)return;
     if(message.type==='ack'){
       const pending=this.pending.get(String(message.commandId));
       if(pending){clearTimeout(pending.timer);this.pending.delete(String(message.commandId));pending.resolve(message.accepted===true);}return;
@@ -184,6 +200,8 @@ export function createForgeRooms(root:string){
         }
         if(!bound)throw new Error('请先创建或加入对局。');
         if(bound.room.clients.get(ws)!==bound.seat)throw new Error('此连接已失去座位。');
+        if(message.type==='leave'){const room=bound.room;bound=undefined;await room.leave();return;}
+        if(bound.room.closed)throw new Error('房间已关闭。');
         if(message.type==='resync'){send(ws,{type:'view',room:bound.room.view(bound.seat)});return;}
         if(message.type==='command'){
           const receipt=await bound.room.command(bound.seat,message.command);send(ws,{type:'receipt',receipt});

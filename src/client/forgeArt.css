@@ -13,11 +13,8 @@
 .forge-avatar span{color:#d0c7b5;font:10px system-ui;letter-spacing:1px;text-shadow:0 2px 3px #000}.forge-avatar strong{font-size:42px;color:#fff1cf;text-shadow:0 3px 2px #0009,0 0 18px #f5d99933}
 .forge-app .forge-avatar.active{border-color:#ffe4a9;box-shadow:inset 0 2px 8px #f5d99950,inset 0 -8px 20px #0009,0 0 0 3px #b68b4740,0 0 30px #efbe5970,0 12px 20px #0009}
 .forge-app .forge-avatar:hover,.forge-app .forge-avatar:active,.forge-app .forge-avatar:focus-visible{transform:translateX(-50%)}
-.forge-avatar-portrait{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 25%;border-radius:50%;pointer-events:none;filter:contrast(1.07);mask-image:linear-gradient(#000 75%,transparent)}
-.enemy .forge-avatar-portrait{filter:contrast(1.07) saturate(.75)}
 .forge-avatar span{position:absolute;left:50%;bottom:-25px;transform:translateX(-50%);padding:3px 14px;max-width:160px;background:linear-gradient(90deg,transparent,#12202cce,transparent);color:#eee3ce;pointer-events:none}
-.forge-avatar strong{position:absolute;left:50%;bottom:-5px;transform:translateX(-50%);display:grid;place-items:center;width:57px;height:48px;border:2px solid #c6b98c;border-radius:50%;background:radial-gradient(ellipse at 50% 10%,#424548,#171e23 75%);box-shadow:inset 0 1px 3px #fff4,0 4px 8px #000b;font-size:32px;pointer-events:none}
-.forge-avatar.active strong{border-color:#fce2a8;box-shadow:inset 0 1px 3px #fff4,0 0 16px #edbd6066,0 4px 8px #000b}
+.forge-avatar strong{position:absolute;inset:0;display:grid;place-items:center;font-size:38px;font-weight:500;font-variant-numeric:tabular-nums;letter-spacing:-1px;pointer-events:none}
 .self .forge-avatar span{left:auto;right:calc(100% + 12px);bottom:28px;transform:none}
 .forge-app .forge-card:active{transform:rotate(0deg)}.forge-app .forge-card.is-tapped:active{transform:rotate(90deg)}
 .forge-app .forge-hand .forge-card{touch-action:none;user-select:none}.forge-app .forge-hand .forge-card:active{transform:translateY(-35px) rotate(0deg)}

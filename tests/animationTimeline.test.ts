@@ -11,13 +11,9 @@ test('semantic animation rejects duplicate and stale events and keeps effects pa
   assert.deepEqual(timeline.frame(300).map(cue=>cue.event.sequence),[6]);
   assert.equal(timeline.frame(500).length,0);
 });
-test('skip and reduced motion consume events without replaying them later',()=>{
-  const timeline=new AnimationTimeline();timeline.push([event(1)],0);timeline.skip();timeline.push([event(1)],10);assert.equal(timeline.frame(10).length,0);
+test('reduced motion consume events without replaying them later',()=>{
+  const timeline=new AnimationTimeline();timeline.push([event(1)],0);timeline.setReduced(true);timeline.setReduced(false);timeline.push([event(1)],10);assert.equal(timeline.frame(10).length,0);
   timeline.setReduced(true);timeline.push([event(2)],20);timeline.setReduced(false);timeline.push([event(2),event(3)],30);assert.deepEqual(timeline.frame(30).map(cue=>cue.event.sequence),[3]);
-});
-test('changing animation speed preserves progress and never changes source events',()=>{
-  const timeline=new AnimationTimeline(),source=event(1);timeline.push([source],0);const before=timeline.frame(120)[0].progress;
-  timeline.setSpeed(2,120);assert.equal(timeline.frame(120)[0].progress,before);assert.equal(timeline.frame(300).length,0);assert.deepEqual(source,event(1));
 });
 test('animation bursts remain bounded and delayed frames settle immediately',()=>{
   const timeline=new AnimationTimeline(0,3);timeline.push([1,2,3,4,5].map(n=>event(n)),0);assert.deepEqual(timeline.frame(0).map(cue=>cue.event.sequence),[3,4,5]);assert.equal(timeline.frame(60000).length,0);

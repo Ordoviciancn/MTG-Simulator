@@ -48,4 +48,17 @@ test('Forge lobby directory refreshes public room metadata without exposing deck
   if(refreshed.type==='rooms'){assert.equal(refreshed.rooms.length,8);assert.equal(refreshed.rooms[1].bestOf,1);}
   lobby.send({type:'create',name:'Over capacity',deckText:'60 Mountain'});assert.equal((await lobby.next()).type,'error');
   lobby.send({type:'join',name:'Unknown',deckText:'60 Mountain',code:'MISSING'});assert.equal((await lobby.next()).type,'error');
+  host.send({type:'leave'});assert.equal((await host.next()).type,'roomClosed');
+  lobby.send({type:'listRooms'});const afterLeave=await lobby.next();
+  assert.equal(afterLeave.type,'rooms');
+  if(afterLeave.type==='rooms'){
+    assert.equal(afterLeave.rooms.length,7);
+    assert.ok(!afterLeave.rooms.some(room=>room.code===credential.credential.code));
+  }
+  lobby.send({type:'resume',credential:credential.credential});assert.equal((await lobby.next()).type,'error');
+  host.send({type:'create',name:'New room',deckText:'60 Island'});
+  assert.equal((await host.next()).type,'credential');assert.equal((await host.next()).type,'view');
+  lobby.send({type:'listRooms'});const replaced=await lobby.next();
+  if(replaced.type!=='rooms')throw new Error('Missing directory');
+  assert.equal(replaced.rooms.length,8);
 });

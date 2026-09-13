@@ -2,12 +2,10 @@ import {useEffect,useRef,useState} from 'react';
 import type {ArenaEvent} from '../shared/arenaProtocol';
 import {AnimationTimeline} from './animationTimeline';
 
-export function SemanticCanvas({events,ownPlayerId,baseline=0,skip=0,speed=1}:{events:ArenaEvent[];ownPlayerId:string;baseline?:number;skip?:number;speed?:number}){
+export function SemanticCanvas({events,ownPlayerId,baseline=0}:{events:ArenaEvent[];ownPlayerId:string;baseline?:number}){
   const canvas=useRef<HTMLCanvasElement>(null),labels=useRef<HTMLDivElement>(null),timeline=useRef(new AnimationTimeline(baseline)),wake=useRef(()=>{});
   const [rendererEpoch,setRendererEpoch]=useState(0);
-  useEffect(()=>{timeline.current.skip();wake.current();},[skip]);
   useEffect(()=>{timeline.current.push(events,performance.now());wake.current();},[events]);
-  useEffect(()=>{timeline.current.setSpeed(speed,performance.now());wake.current();},[speed]);
   useEffect(()=>{
     const media=matchMedia('(prefers-reduced-motion: reduce)');const update=()=>{timeline.current.setReduced(media.matches||document.hidden);wake.current();};
     update();media.addEventListener('change',update);document.addEventListener('visibilitychange',update);
@@ -53,9 +51,9 @@ export function SemanticCanvas({events,ownPlayerId,baseline=0,skip=0,speed=1}:{e
       if(cues.length)frame=requestAnimationFrame(draw);
     };
     wake.current=()=>{if(!frame)frame=requestAnimationFrame(draw);};wake.current();
-    const lost=(event:Event)=>{event.preventDefault();timeline.current.skip();cancelAnimationFrame(frame);frame=0;textNodes.forEach(element=>element.remove());textNodes.clear();};
+    const lost=(event:Event)=>{event.preventDefault();timeline.current.clear();cancelAnimationFrame(frame);frame=0;textNodes.forEach(element=>element.remove());textNodes.clear();};
     const restored=()=>setRendererEpoch(value=>value+1);
-    const hidden=()=>{if(document.hidden)timeline.current.skip();wake.current();};
+    const hidden=()=>{if(document.hidden)timeline.current.clear();wake.current();};
     node.addEventListener('webglcontextlost',lost);node.addEventListener('webglcontextrestored',restored);window.addEventListener('resize',wake.current);document.addEventListener('visibilitychange',hidden);
     return()=>{cancelAnimationFrame(frame);node.removeEventListener('webglcontextlost',lost);node.removeEventListener('webglcontextrestored',restored);window.removeEventListener('resize',wake.current);document.removeEventListener('visibilitychange',hidden);wake.current=()=>{};textNodes.forEach(element=>element.remove());gl.deleteBuffer(buffer);gl.deleteProgram(program);gl.deleteShader(vertex);gl.deleteShader(fragment);};
   },[ownPlayerId,rendererEpoch]);

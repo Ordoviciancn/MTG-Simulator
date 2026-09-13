@@ -10,6 +10,7 @@ export type ArenaRoomView = {matchId:string;code:string;playerId:string;seat:num
 export type ArenaCredential = {code:string;playerId:string;token:string};
 export type ArenaRoomListing = {code:string;hostName:string;seats:number;bestOf:1|3;status:ArenaRoomView['status']};
 export type ArenaClientMessage =
+ | {type:'leave'}
  | {type:'listRooms'}
  | {type:'create';name:string;deckText:string;bestOf?:1|3}
  | {type:'join';code:string;name:string;deckText:string}
@@ -17,6 +18,7 @@ export type ArenaClientMessage =
  | {type:'command';command:Command}
  | {type:'resync'};
 export type ArenaServerMessage =
+ | {type:'roomClosed';message:string}
  | {type:'rooms';rooms:ArenaRoomListing[]}
  | {type:'credential';credential:ArenaCredential}
  | {type:'view';room:ArenaRoomView}
