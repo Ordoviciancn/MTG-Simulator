@@ -73,3 +73,18 @@ test('result and combat effects use confirmed engine identities and discard unkn
   assert.deepEqual(event.data.combat,[{attackerId:view.players[0].battlefield[0].id,defenderPlayerId:'B',defenderCardId:undefined,blockerIds:[view.players[1].battlefield[0].id]}]);
   assert.deepEqual(projection.event({type:'semantic',sequence:2,kind:'finished',data:{winnerPlayerIds:[0,999],gameNumber:1}}).data,{winnerPlayerIds:['A'],gameNumber:1});
 });
+
+test('library top projects revealed names and concealed backs with per-observer handles',()=>{
+  const projector=new ForgeProjection(0,()=>['A','B']);
+  const p=(id:number,top:{id:number;ownerId:number;name:string;kind:string}|null)=>({id,name:'Player',life:20,hand:[],handCount:0,libraryCount:top?60:0,battlefield:[],graveyard:[],exile:[],libraryTop:top});
+  const raw={type:'state',players:[p(0,{id:30,ownerId:0,name:'Lantern Top',kind:'spell'}),p(1,{id:31,ownerId:1,name:'Face-down card',kind:'spell'})],stack:[],phase:'MAIN1',activePlayerId:0};
+  const view=projector.snapshot(raw);
+  assert.equal(view.players[0].libraryTop?.hidden,false);
+  assert.equal(view.players[1].libraryTop?.hidden,true);
+  const revealed=view.players[0].libraryTop!.id;
+  assert.equal(projector.resolveCard(revealed),30);
+  // 牌离开牌库顶后引用按观察者规则失效。
+  const next=projector.snapshot({...raw,players:[p(0,null),p(1,null)]});
+  assert.equal(next.players[0].libraryTop,null);
+  assert.equal(projector.resolveCard(revealed),undefined);
+});

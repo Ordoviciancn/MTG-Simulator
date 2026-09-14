@@ -32,6 +32,7 @@ export function ArenaClient(){
   const [bestOf,setBestOf]=useState<1|3>(3),[coinDone,setCoinDone]=useState<string|null>(null);
   const [pending,setPending]=useState(false),[events,setEvents]=useState<ArenaEvent[]>([]),[preview,setPreview]=useState<ArenaCard|null>(null);
   const [zone,setZone]=useState<{title:string;cards:ArenaCard[]}|null>(null);
+  const [barMinimized,setBarMinimized]=useState(false);
   const [animationBaseline,setAnimationBaseline]=useState({epoch:0,sequence:0});
   const socket=useRef<WebSocket|null>(null),roomRef=useRef(room),lastSequence=useRef(0),pendingCommand=useRef<{command:Command;sent:boolean;sentAt:number}|null>(null);
   roomRef.current=room;
@@ -104,7 +105,8 @@ export function ArenaClient(){
     const command:Command={protocolVersion:1,matchId:room.matchId,playerId:room.playerId,commandId:crypto.randomUUID(),expectedRevision:room.revision,operation,parameters};
     pendingCommand.current={command,sent:true,sentAt:Date.now()};setPending(true);send({type:'command',command});
   }
-  function selectCard(card:ArenaCard){if(room?.prompt?.kind==='input'&&card.actionable)command('selectCard',{requestId:room.prompt.requestId,cardId:card.id});}
+  // 引擎侧 selectCard 自带合法性校验：伦敦调度等输入不经过 setSelectables，因此自己手牌始终允许点击，由引擎拒绝无效选择。
+  function selectCard(card:ArenaCard){if(room?.prompt?.kind==='input'&&(card.actionable||you?.hand.some(h=>h.id===card.id)))command('selectCard',{requestId:room.prompt.requestId,cardId:card.id});}
   useEffect(()=>{
     const key=(e:KeyboardEvent)=>{
       if(e.defaultPrevented)return;
@@ -123,10 +125,13 @@ export function ArenaClient(){
   const finishCoin=useCallback(()=>setCoinDone(room?.matchId??null),[room?.matchId]);
   const canSelect=connected&&!pending&&!coinPending&&room?.prompt?.kind==='input';
   const cardDrag=useCardDrag(!!canSelect,selectCard);
-  function cardNode(card:ArenaCard,style?:CSSProperties){return <button key={card.stackId??card.id} className={`forge-card ${cardDrag.drag?.card.id===card.id?'is-drag-origin':''} ${card.tapped?'is-tapped':''} ${card.actionable&&canSelect?'is-actionable':''} ${state?.combat?.some(a=>a.attackerId===card.id)?'is-attacking':''} ${state?.combat?.some(a=>a.blockerIds.includes(card.id))?'is-blocking':''}`} style={style} data-card-id={card.id} title={card.name} draggable={false} onPointerDown={e=>{if(you?.hand.some(c=>c.id===card.id)){cardDrag.begin(e,card);setPreview(null);}}} onMouseEnter={()=>{if(!cardDrag.drag)setPreview(card);}} onMouseLeave={()=>setPreview(null)} onFocus={()=>setPreview(card)} onBlur={()=>setPreview(null)} onClick={()=>{if(!cardDrag.consumeClick())selectCard(card);}}>
+  function cardNode(card:ArenaCard,style?:CSSProperties,extraClass?:string){return <button key={card.stackId??card.id} className={`forge-card ${extraClass??''} ${cardDrag.drag?.card.id===card.id?'is-drag-origin':''} ${card.tapped?'is-tapped':''} ${card.actionable&&canSelect?'is-actionable':''} ${state?.combat?.some(a=>a.attackerId===card.id)?'is-attacking':''} ${state?.combat?.some(a=>a.blockerIds.includes(card.id))?'is-blocking':''}`} style={style} data-card-id={card.id} title={card.name} draggable={false} onPointerDown={e=>{if(you?.hand.some(c=>c.id===card.id)){cardDrag.begin(e,card);setPreview(null);}}} onMouseEnter={()=>{if(!cardDrag.drag)setPreview(card);}} onMouseLeave={()=>setPreview(null)} onFocus={()=>setPreview(card)} onBlur={()=>setPreview(null)} onClick={()=>{if(!cardDrag.consumeClick())selectCard(card);}}>
     <LocalizedCardImage name={card.name} hidden={card.hidden}/><span className="forge-card-name"><LocalizedName name={card.name} hidden={card.hidden}/></span>{card.power!==undefined&&<strong className="forge-pt">{card.power}/{card.toughness}</strong>}
   </button>;}
   const prompt=room?.prompt?{...room.prompt,okLabel:label(room.prompt.okLabel??''),cancelLabel:label(room.prompt.cancelLabel??'')}:undefined;
+  useEffect(()=>{setBarMinimized(false);},[prompt?.requestId]);
+  // MTGA 式特殊出牌区：牌库顶（Lantern 类揭示/可打出效果）与坟场中可打出的牌（返照等）。
+  const trayCards=[...(you?.libraryTop&&(you.libraryTop.actionable||!you.libraryTop.hidden)?[you.libraryTop]:[]),...(opponent?.libraryTop&&(opponent.libraryTop.actionable||!opponent.libraryTop.hidden)?[opponent.libraryTop]:[]),...(you?.graveyard??[]).filter(c=>c.actionable)];
   return <main className="forge-app">
     <ArenaAtmosphere/>
     {cardDrag.drag&&<div className={`forge-drag-card ${cardDrag.drag.returning?'returning':''}`} aria-hidden="true" style={{left:cardDrag.drag.originX,top:cardDrag.drag.originY,translate:`${cardDrag.drag.x-cardDrag.drag.startX}px ${cardDrag.drag.y-cardDrag.drag.startY}px`,width:cardDrag.drag.width,height:cardDrag.drag.height}}><LocalizedCardImage name={cardDrag.drag.card.name} hidden={cardDrag.drag.card.hidden} alt=""/><i/></div>}
@@ -147,7 +152,11 @@ export function ArenaClient(){
           <CombatLines combat={state.combat??[]}/>
         </section>
         <div className="forge-hand" data-zone="Hand" data-zone-player={you?.id} aria-label="手牌">{you?.hand.map((c,i)=>{const offset=i-(you.hand.length-1)/2;return cardNode(c,{'--fan-angle':`${Math.max(-13,Math.min(13,offset*3))}deg`,'--fan-y':`${Math.abs(offset)**1.6*2}px`,zIndex:i} as CSSProperties);})}</div>
-        <fieldset className={`forge-input ${prompt?.kind==='sideboard'?'forge-sideboard-input':''}`} disabled={!connected||pending||coinPending||room.status==='failed'||state.gameOver}><ForgeControls prompt={prompt} fullControl={room.fullControl} onControl={fullControl=>command('control',{fullControl})} onDecision={decision=>command(decision.type,{...decision})}/></fieldset>
+        {trayCards.length>0&&<aside className="forge-hand-tray" aria-label="特殊可打出">{trayCards.map(c=>cardNode(c,undefined,'is-mini'))}</aside>}
+        <div className={`forge-input-area ${barMinimized?'is-minimized':''}`}>
+          <button className="forge-input-toggle" aria-expanded={!barMinimized} title={barMinimized?'展开操作栏':'收起操作栏'} onClick={()=>setBarMinimized(m=>!m)}>{barMinimized?'▲ 操作栏':'▼'}</button>
+          {!barMinimized&&<fieldset className={`forge-input ${prompt?.kind==='sideboard'?'forge-sideboard-input':''}`} disabled={!connected||pending||coinPending||room.status==='failed'||state.gameOver}><ForgeControls prompt={prompt} fullControl={room.fullControl} onControl={fullControl=>command('control',{fullControl})} onDecision={decision=>command(decision.type,{...decision})}/></fieldset>}
+        </div>
         <EventMotion key={`${room.matchId}:${animationBaseline.epoch}`} events={events} ownPlayerId={room.playerId} baseline={animationBaseline.sequence}/><GameResult key={room.matchId} state={state} playerId={room.playerId}/>
         <SemanticCanvas key={`${room.matchId}:${animationBaseline.epoch}`} events={events} ownPlayerId={room.playerId} baseline={animationBaseline.sequence}/>
         {preview&&!zone&&!cardDrag.drag&&<div className="forge-preview"><LocalizedCardImage name={preview.name} hidden={preview.hidden}/><ChineseCardText name={preview.name} hidden={preview.hidden}/></div>}

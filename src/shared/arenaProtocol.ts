@@ -2,7 +2,7 @@ import type { Command, CommandReceipt } from './matchProtocol';
 import type { ForgePrompt } from './forgeTypes';
 
 export type ArenaCard = {id:string;name:string;ownerId:string;controllerId:string;kind:string;tapped:boolean;hidden:boolean;actionable:boolean;power?:number;toughness?:number;stackId?:string;ability?:boolean;description?:string};
-export type ArenaPlayer = {id:string;name:string;life:number;libraryCount:number;handCount:number;hand:ArenaCard[];battlefield:ArenaCard[];graveyard:ArenaCard[];exile:ArenaCard[]};
+export type ArenaPlayer = {id:string;name:string;life:number;libraryCount:number;handCount:number;hand:ArenaCard[];battlefield:ArenaCard[];graveyard:ArenaCard[];exile:ArenaCard[];libraryTop?:ArenaCard|null};
 export type ArenaCombat = {attackerId:string;blockerIds:string[];defenderPlayerId?:string;defenderCardId?:string};
 export type ArenaSnapshot = {players:ArenaPlayer[];stack:ArenaCard[];combat:ArenaCombat[];phase:string;activePlayerId:string|null;gameOver:boolean;winnerPlayerIds?:string[];lastEventSequence:number;gameNumber?:number;bestOf?:1|3;scores?:number[];matchOver?:boolean;coinWinnerSeat?:number|null;coinChoicePending?:boolean};
 export type ArenaEvent = {sequence:number;kind:string;data:{playerId?:string;cardId?:string;name?:string;description?:string;ability?:boolean;from?:string;to?:string;phase?:string;amount?:number;before?:number;after?:number;tapped?:boolean;fizzled?:boolean;targetPlayerIds?:string[];targetCardIds?:string[];combat?:ArenaCombat[];winnerPlayerIds?:string[];gameNumber?:number}};

@@ -3,7 +3,7 @@ import type { ArenaCard, ArenaCombat, ArenaEvent, ArenaSnapshot } from '../share
 import type { ForgeMessage } from './forgeProcess';
 
 type RawCard = {id:number;ownerId:number;controllerId?:number;name:string;kind:string;tapped?:boolean;actionable?:boolean;power?:number;toughness?:number;stackId?:number;ability?:boolean;description?:string};
-type RawPlayer = {id:number;name:string;life:number;libraryCount:number;handCount:number;hand:RawCard[];battlefield:RawCard[];graveyard:RawCard[];exile:RawCard[]};
+type RawPlayer = {id:number;name:string;life:number;libraryCount:number;handCount:number;hand:RawCard[];battlefield:RawCard[];graveyard:RawCard[];exile:RawCard[];libraryTop?:RawCard|null};
 
 // References belong to one observer. A card leaving their visible zones loses its handle.
 export class ForgeProjection {
@@ -28,7 +28,7 @@ export class ForgeProjection {
       if(c.stackId!==undefined){stackSeen.add(c.stackId);if(!this.stackHandles.has(c.stackId))this.stackHandles.set(c.stackId,randomUUID());out.stackId=this.stackHandles.get(c.stackId);out.ability=c.ability;}
       return out;
     };
-    const projected=players.map((p,i)=>({id:this.playerIds.get(p.id)!,name:p.name,life:p.life,libraryCount:p.libraryCount,handCount:p.handCount,hand:i===this.seat?p.hand.map(card):[],battlefield:p.battlefield.map(card),graveyard:p.graveyard.map(card),exile:p.exile.map(card)}));
+    const projected=players.map((p,i)=>({id:this.playerIds.get(p.id)!,name:p.name,life:p.life,libraryCount:p.libraryCount,handCount:p.handCount,hand:i===this.seat?p.hand.map(card):[],battlefield:p.battlefield.map(card),graveyard:p.graveyard.map(card),exile:p.exile.map(card),libraryTop:p.libraryTop?card(p.libraryTop):null}));
     const stack=(message.stack as RawCard[]).map(card);
     for(const id of this.handles.keys())if(!seen.has(id))this.handles.delete(id);
     for(const id of this.stackHandles.keys())if(!stackSeen.has(id))this.stackHandles.delete(id);
