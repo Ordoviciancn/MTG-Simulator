@@ -8,10 +8,14 @@ export class ForgeProcess {
   private buffer = '';
   private closed = false;
   private readyState = false;
+  private diagnostics = '';
   readonly ready: Promise<void>;
   readonly exited: Promise<void>;
   constructor(launch: ForgeLaunch, onMessage: (message: ForgeMessage) => void, onFailure: (error: Error) => void) {
     this.child = spawn(launch.executable, launch.args, { cwd: launch.cwd, env: launch.env, windowsHide: true, stdio: 'pipe' });
+    const terminateOnExit=()=>this.child.kill();
+    process.once('exit',terminateOnExit);
+    this.child.once('close',()=>process.removeListener('exit',terminateOnExit));
     this.exited = new Promise(resolve => this.child.once('close', () => resolve()));
     this.ready = new Promise((resolve, reject) => {
       const timer = setTimeout(() => fail(new Error('Forge initialization timed out.')), launch.startupTimeoutMs ?? 60000);
@@ -20,6 +24,7 @@ export class ForgeProcess {
         clearTimeout(timer);
         this.closed = true;
         this.child.kill();
+        if(this.diagnostics)console.error('[Forge stderr]',this.diagnostics);
         reject(error);
         onFailure(error);
       };
@@ -45,8 +50,9 @@ export class ForgeProcess {
         }
         if (this.buffer.length > MAX_LINE) fail(new Error('Forge message exceeds size limit.'));
       });
-      // Drain diagnostics so a verbose Java process cannot block on stderr.
-      this.child.stderr.resume();
+      // Bound the private diagnostic tail; never send raw card names to clients.
+      this.child.stderr.setEncoding('utf8');
+      this.child.stderr.on('data',(chunk:string)=>{this.diagnostics=(this.diagnostics+chunk).slice(-16384);});
       this.stop = () => { clearTimeout(timer); this.closed = true; this.child.kill(); reject(new Error('Forge stopped.')); return this.exited; };
     });
   }

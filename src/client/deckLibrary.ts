@@ -2,7 +2,7 @@ export interface SavedDeck {id:string;name:string;text:string;updatedAt:string}
 export interface DeckLibrary {version:1;decks:SavedDeck[]}
 export interface DeckRow {name:string;count:number;sideboard:boolean}
 export interface LibraryStorage {getItem(key:string):string|null;setItem(key:string,value:string):void}
-export interface DesktopLibrary {loadLibrary():Promise<string|null>;saveLibrary(json:string):Promise<void>}
+export interface DesktopLibrary {loadLibrary():Promise<string|null>;saveLibrary(json:string):Promise<void>;tunnelStatus?():Promise<import('./TunnelPanel').TunnelState>;startTunnel?():Promise<import('./TunnelPanel').TunnelState>;stopTunnel?():Promise<import('./TunnelPanel').TunnelState>}
 declare global {interface Window {mtgDesktop?:DesktopLibrary}}
 const key='mtg-deck-library-v1';
 const maxBytes=512*1024;

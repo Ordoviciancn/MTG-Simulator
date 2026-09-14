@@ -37,7 +37,7 @@ export class ForgeProjection {
       const attackerId=this.handles.get(raw.attackerId);if(!attackerId)continue;
       combat.push({attackerId,blockerIds:raw.blockerIds.map(id=>this.handles.get(id)).filter((id):id is string=>!!id),defenderPlayerId:this.playerIds.get(raw.defenderPlayerId!),defenderCardId:this.handles.get(raw.defenderCardId!)});
     }
-    return {players:projected,stack,combat,phase:String(message.phase),activePlayerId:this.playerIds.get(Number(message.activePlayerId))??null,gameOver:message.gameOver===true,lastEventSequence:Number(message.lastEventSequence??0),gameNumber:Number(message.gameNumber??1),bestOf:message.bestOf===3?3:1,scores:Array.isArray(message.scores)?message.scores.map(Number):[0,0],matchOver:message.matchOver===true,coinChoicePending:message.coinChoicePending===true,coinWinnerSeat:message.coinWinnerSeat===0||message.coinWinnerSeat===1?message.coinWinnerSeat:null};
+    return {players:projected,stack,combat,phase:String(message.phase),activePlayerId:this.playerIds.get(Number(message.activePlayerId))??null,gameOver:message.gameOver===true,winnerPlayerIds:Array.isArray(message.winnerPlayerIds)?message.winnerPlayerIds.map(id=>this.playerIds.get(id)).filter((id):id is string=>!!id):undefined,lastEventSequence:Number(message.lastEventSequence??0),gameNumber:Number(message.gameNumber??1),bestOf:message.bestOf===3?3:1,scores:Array.isArray(message.scores)?message.scores.map(Number):[0,0],matchOver:message.matchOver===true,coinChoicePending:message.coinChoicePending===true,coinWinnerSeat:message.coinWinnerSeat===0||message.coinWinnerSeat===1?message.coinWinnerSeat:null};
   }
   event(message:ForgeMessage):ArenaEvent {
     const raw=message.data as Record<string,unknown>,data:ArenaEvent['data']={};
@@ -45,6 +45,9 @@ export class ForgeProjection {
     if(typeof raw.cardId==='number' && typeof raw.name==='string'){data.cardId=this.handle(raw.cardId);data.name=raw.name;}
     if(data.name&&data.name!=='Face-down card'&&typeof raw.description==='string')data.description=raw.description.slice(0,2000);
     if(typeof raw.ability==='boolean')data.ability=raw.ability;
+    if(Array.isArray(raw.winnerPlayerIds))data.winnerPlayerIds=raw.winnerPlayerIds.map(id=>this.playerIds.get(id)).filter((id):id is string=>!!id);
+    if(typeof raw.gameNumber==='number')data.gameNumber=raw.gameNumber;
+    if(Array.isArray(raw.combat))data.combat=raw.combat.flatMap(attack=>{const attackerId=this.handles.get(attack.attackerId);return attackerId?[{attackerId,blockerIds:(attack.blockerIds??[]).map((id:number)=>this.handles.get(id)).filter((id:unknown):id is string=>typeof id==='string'),defenderPlayerId:this.playerIds.get(attack.defenderPlayerId),defenderCardId:this.handles.get(attack.defenderCardId)}]:[];});
     for(const key of ['from','to','phase'] as const)if(typeof raw[key]==='string')data[key]=raw[key];
     for(const key of ['before','after','amount'] as const)if(typeof raw[key]==='number')data[key]=raw[key];
     if(Array.isArray(raw.targetPlayerIds))data.targetPlayerIds=raw.targetPlayerIds.map(id=>this.playerIds.get(id)).filter((id):id is string=>!!id);

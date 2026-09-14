@@ -31,6 +31,8 @@ public final class ForgeHumanBridge {
     static Integer coinWinnerSeat;
     static volatile boolean coinChoicePending;
     static final boolean[] FULL_CONTROL=new boolean[2];
+    // LobbyPlayer.equals 按名字比较：座位重名时 Forge 会把胜场同时记给双方（比分恒为对等）。引擎内名字必须唯一。
+    static String[] displayNames=new String[2];
     static Path resources;
     static volatile boolean initialized;
     static synchronized void emit(Object value) { System.out.println("FORGE_BRIDGE " + JSON.toJson(value)); System.out.flush(); }
@@ -186,6 +188,8 @@ public final class ForgeHumanBridge {
             for(Seat seat:SEATS) {
                 if(seat==null)continue;
                 Map<String,Object> data=obj();
+                if(kind.equals("combat"))data.put("combat",combat());
+                if(kind.equals("finished")){data.put("winnerPlayerIds",java.util.Arrays.stream(SEATS).filter(s->s!=null && s.player.getOutcome()!=null && s.player.getOutcome().hasWon()).map(s->s.player.getId()).toList());data.put("gameNumber",gameNumber);}
                 CardView card=null;
                 if(event instanceof GameEventPlayerLivesChanged e)data=obj("playerId",e.player().getId(),"before",e.oldLives(),"after",e.newLives());
                 if(event instanceof GameEventTurnPhase e)data=obj("playerId",e.playerTurn().getId(),"phase",String.valueOf(e.phase()));
@@ -230,18 +234,24 @@ public final class ForgeHumanBridge {
     }
     static void states() {
         if(game==null)return;
-        for(Seat seat:SEATS) {if(seat==null)continue; List<Object> players=new ArrayList<>();for(Player p:game.getRegisteredPlayers())players.add(obj("id",p.getId(),"name",p.getName(),"life",p.getLife(),"libraryCount",p.getCardsIn(ZoneType.Library).size(),"handCount",p.getCardsIn(ZoneType.Hand).size(),"hand",p==seat.player?zone(p,ZoneType.Hand,seat.player):List.of(),"battlefield",zone(p,ZoneType.Battlefield,seat.player),"graveyard",zone(p,ZoneType.Graveyard,seat.player),"exile",zone(p,ZoneType.Exile,seat.player)));
+        for(Seat seat:SEATS) {if(seat==null)continue; List<Object> players=new ArrayList<>();int playerIndex=0;for(Player p:game.getRegisteredPlayers()){String shown=playerIndex<displayNames.length?displayNames[playerIndex]:p.getName();players.add(obj("id",p.getId(),"name",shown,"life",p.getLife(),"libraryCount",p.getCardsIn(ZoneType.Library).size(),"handCount",p.getCardsIn(ZoneType.Hand).size(),"hand",p==seat.player?zone(p,ZoneType.Hand,seat.player):List.of(),"battlefield",zone(p,ZoneType.Battlefield,seat.player),"graveyard",zone(p,ZoneType.Graveyard,seat.player),"exile",zone(p,ZoneType.Exile,seat.player)));playerIndex++;}
             List<Object> stack=new ArrayList<>();for(var item:game.getStack()) {Map<String,Object> projected=card(item.getSourceCard(),seat.player);projected.put("stackId",item.getId());projected.put("ability",!item.getSpellAbility().isSpell());if(!"Face-down card".equals(projected.get("name")))projected.put("description",item.getSpellAbility().getView().getDescription());stack.add(projected);}
-            Player active=game.getPhaseHandler().getPlayerTurn();emit(obj("type","state","seat",seat.index,"players",players,"stack",stack,"combat",combat(),"lastEventSequence",EVENTS.get(),"phase",String.valueOf(game.getPhaseHandler().getPhase()),"activePlayerId",active==null?null:active.getId(),"gameOver",game.isGameOver(),"gameNumber",gameNumber,"bestOf",match.getRules().getGamesPerMatch(),"scores",match.getPlayers().stream().map(p->match.getGamesWonBy(p.getPlayer())).toList(),"matchOver",match.isMatchOver(),"coinWinnerSeat",coinWinnerSeat,"coinChoicePending",coinChoicePending)); }
+            Player active=game.getPhaseHandler().getPlayerTurn();emit(obj("type","state","seat",seat.index,"players",players,"stack",stack,"combat",combat(),"lastEventSequence",EVENTS.get(),"phase",String.valueOf(game.getPhaseHandler().getPhase()),"activePlayerId",active==null?null:active.getId(),"gameOver",game.isGameOver(),"winnerPlayerIds",game.isGameOver()?java.util.Arrays.stream(SEATS).filter(s->s!=null && s.player.getOutcome()!=null && s.player.getOutcome().hasWon()).map(s->s.player.getId()).toList():null,"gameNumber",gameNumber,"bestOf",match.getRules().getGamesPerMatch(),"scores",match.getPlayers().stream().map(p->match.getGamesWonBy(p.getPlayer())).toList(),"matchOver",match.isMatchOver(),"coinWinnerSeat",coinWinnerSeat,"coinChoicePending",coinChoicePending)); }
     }
     static void init(JsonObject input) {
         try {
             String testSeed=System.getenv("FORGE_TEST_SEED");
             if(testSeed!=null) forge.util.MyRandom.setRandom(new Random(Long.parseLong(testSeed)));
             List<RegisteredPlayer> players=new ArrayList<>();
-            for(JsonElement entry:input.getAsJsonArray("players")) { JsonObject p=entry.getAsJsonObject();Deck deck=new Deck(p.get("name").getAsString());
+            String firstName=null;int seatIndex=0;
+            for(JsonElement entry:input.getAsJsonArray("players")) { JsonObject p=entry.getAsJsonObject();String playerName=p.get("name").getAsString();
+                displayNames[seatIndex]=playerName;
+                // 引擎内唯一名：与首位重名时追加后缀，仅影响 Forge 内部计分与相等性判断。
+                String lobbyName=(firstName!=null&&firstName.equals(playerName))?playerName+" #2":playerName;
+                if(firstName==null)firstName=lobbyName;
+                Deck deck=new Deck(playerName);
                 for(JsonElement line:p.getAsJsonArray("deck")){JsonObject row=line.getAsJsonObject();String name=row.get("name").getAsString();var paper=FModel.getMagicDb().getCommonCards().getCard(name);if(paper==null)throw new IllegalArgumentException("Unknown Forge card: "+name);deck.getMain().add(paper,row.get("count").getAsInt());}
-                if(p.has("sideboard"))for(JsonElement line:p.getAsJsonArray("sideboard")){JsonObject row=line.getAsJsonObject();String name=row.get("name").getAsString();var paper=FModel.getMagicDb().getCommonCards().getCard(name);if(paper==null)throw new IllegalArgumentException("Unknown Forge card: "+name);deck.getOrCreate(forge.deck.DeckSection.Sideboard).add(paper,row.get("count").getAsInt());} players.add(new RegisteredPlayer(deck).setPlayer(new LobbyPlayerHuman(p.get("name").getAsString()))); }
+                if(p.has("sideboard"))for(JsonElement line:p.getAsJsonArray("sideboard")){JsonObject row=line.getAsJsonObject();String name=row.get("name").getAsString();var paper=FModel.getMagicDb().getCommonCards().getCard(name);if(paper==null)throw new IllegalArgumentException("Unknown Forge card: "+name);deck.getOrCreate(forge.deck.DeckSection.Sideboard).add(paper,row.get("count").getAsInt());} players.add(new RegisteredPlayer(deck).setPlayer(new LobbyPlayerHuman(lobbyName)));seatIndex++; }
             if(players.size()!=2)throw new IllegalArgumentException("Exactly two players required");
             GameRules rules=new GameRules(GameType.Constructed);rules.setGamesPerMatch(input.has("bestOf")&&input.get("bestOf").getAsInt()==3?3:1);match=new Match(rules,players,"Tabletop Forge match");do {gameNumber++;game=match.createGame();
             for(int i=0;i<2;i++){Seat seat=new Seat(i,game.getPlayers().get(i));SEATS[i]=seat;seat.controller.setGui(proxy(IGuiGame.class,seat));seat.controller.getYieldController().setPref(FPref.YIELD_SKIP_PHASE_DELAY,"true");seat.controller.getYieldController().setPref(FPref.YIELD_SKIP_RESOLVE_DELAY,"true");seat.controller.getYieldController().setPref(FPref.YIELD_AUTO_PASS_NO_ACTIONS,Boolean.toString(!FULL_CONTROL[i]));seat.controller.getYieldController().setDisableAutoYields(FULL_CONTROL[i]);seat.controller.getYieldController().setDisableAutoTriggers(FULL_CONTROL[i]);seat.controller.getYieldController().setPref(FPref.UI_SHOW_ACTIONABLE_HIGHLIGHTS,"true");}
@@ -317,7 +327,7 @@ public final class ForgeHumanBridge {
         resources=Path.of(args[0]).toAbsolutePath();Path session=Path.of(args[1]).toAbsolutePath();Files.createDirectories(session);
         GuiBase.setInterface(proxy(IGuiBase.class,(p,m,a)->base(m,a)));
         Thread.setDefaultUncaughtExceptionHandler((t,e)->fail(e));
-        FModel.initialize(proxy(IProgressBar.class,(p,m,a)->m.getReturnType()==boolean.class?false:null),prefs->{prefs.setPref(FPref.LOAD_CARD_SCRIPTS_LAZILY,true);prefs.setPref(FPref.UI_SELECT_FROM_CARD_DISPLAYS,false);return null;});
+        FModel.initialize(proxy(IProgressBar.class,(p,m,a)->m.getReturnType()==boolean.class?false:null),prefs->{prefs.setPref(FPref.UI_LANGUAGE,"zh-CN");prefs.setPref(FPref.LOAD_CARD_SCRIPTS_LAZILY,true);prefs.setPref(FPref.UI_SELECT_FROM_CARD_DISPLAYS,false);return null;});
         emit(obj("type","ready","engine","forge","protocol",1));
         try(BufferedReader reader=new BufferedReader(new InputStreamReader(System.in,java.nio.charset.StandardCharsets.UTF_8))){String line;while((line=reader.readLine())!=null){JsonObject input=null;try{input=JsonParser.parseString(line).getAsJsonObject();command(input);}catch(Throwable e){if(input!=null)acknowledge(input,false,e.toString());else emit(obj("type","error","fatal",false,"message",e.toString()));}}}
         System.exit(0);

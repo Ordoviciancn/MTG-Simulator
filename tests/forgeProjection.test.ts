@@ -61,3 +61,15 @@ test('new Forge game expires old card references while retaining public match sc
   assert.notEqual(second.players[0].hand[0].id,old);
   assert.deepEqual(second.scores,[0,1]);assert.equal(second.coinWinnerSeat,1);assert.equal(second.players[1].hand.length,0);
 });
+
+test('result and combat effects use confirmed engine identities and discard unknown references',()=>{
+  const projection=new ForgeProjection(0,()=>['A','B']);
+  const p=(id:number)=>({id,name:'Player',life:id?20:0,hand:[],handCount:0,libraryCount:50,battlefield:[{id:id+10,ownerId:id,name:'Grizzly Bears',kind:'creature'}],graveyard:[],exile:[]});
+  const raw={type:'state',players:[p(0),p(1)],stack:[],phase:'MAIN1',activePlayerId:0};
+  assert.equal(projection.snapshot(raw).winnerPlayerIds,undefined,'Life totals cannot predict a winner');
+  const view=projection.snapshot({...raw,gameOver:true,winnerPlayerIds:[0,999]});
+  assert.deepEqual(view.winnerPlayerIds,['A']);
+  const event=projection.event({type:'semantic',sequence:1,kind:'combat',data:{combat:[{attackerId:10,defenderPlayerId:1,blockerIds:[11,999],privateName:'Secret'},{attackerId:999,blockerIds:[]}]}});
+  assert.deepEqual(event.data.combat,[{attackerId:view.players[0].battlefield[0].id,defenderPlayerId:'B',defenderCardId:undefined,blockerIds:[view.players[1].battlefield[0].id]}]);
+  assert.deepEqual(projection.event({type:'semantic',sequence:2,kind:'finished',data:{winnerPlayerIds:[0,999],gameNumber:1}}).data,{winnerPlayerIds:['A'],gameNumber:1});
+});

@@ -59,7 +59,7 @@ try {
     if(damaged){resolved=true;break;}
     const client=clients.slice(0,2).find(c=>c.view?.prompt)!;
     const room=client.view!,prompt=room.prompt!,state=room.snapshot!;
-    if(prompt.message==='Choose ability')abilityPromptSeen=true;
+    if(/Choose ability|选择异能/.test(prompt.message))abilityPromptSeen=true;
     if(process.argv.includes('--trace'))console.log(JSON.stringify({step,seat:room.seat,input:prompt.inputType,life:state.players.map(p=>p.life),phase:state.phase,options:prompt.options}));
     assert.equal(state.players.find(p=>p.id!==room.playerId)?.hand.length,0);
     let operation='ok',parameters:Record<string,unknown>={requestId:prompt.requestId};
@@ -93,11 +93,14 @@ try {
       numericChosen=true;
     }else if(prompt.kind==='order'){
       assert.equal(scry,true);assert.equal(prompt.options?.length,2);operation='choice';parameters.value=prompt.options!.map(option=>option.value).reverse();
-      ordered={seat:room.seat,name:prompt.options![1].label,handIds:state.players[room.seat].hand.map(c=>c.id)};
+      const label=prompt.options![1].label;
+      const canonicalName:Record<string,string>={'海岛':'Island','注定':'Preordain',Island:'Island',Preordain:'Preordain'};
+      assert.ok(canonicalName[label],`Unexpected scry fixture: ${label}`);
+      ordered={seat:room.seat,name:canonicalName[label],handIds:state.players[room.seat].hand.map(c=>c.id)};
     }else if(scry&&prompt.kind==='choice'&&prompt.min===0){
       assert.equal(prompt.max,2);operation='choice';parameters.value=[];
     }else if(manland&&prompt.kind==='choice'){
-      const option=prompt.options?.find(o=>/becomes.*creature/i.test(o.label));assert.ok(option,JSON.stringify(prompt));operation='choice';parameters.value=option.value;
+      const option=prompt.options?.find(o=>/becomes.*creature|成为.*生物/i.test(o.label));assert.ok(option,JSON.stringify(prompt));operation='choice';parameters.value=option.value;
     }else if(prompt.kind==='choice'){
       assert.equal(prompt.options?.length,1);operation='choice';parameters.value=prompt.options![0].value;
     }else assert.ok(prompt.okEnabled,JSON.stringify(prompt));

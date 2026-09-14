@@ -41,5 +41,6 @@ try{
   }
   await wait(()=>clients[0].view?.snapshot?.matchOver);
   assert.deepEqual(clients[0].view!.snapshot!.scores,[1,2]);assert.equal(clients[0].view!.snapshot!.gameNumber,3);assert.equal(sideboards.size,4);assert.equal(choosers.size,3);assert.ok(swappedDraw,'Sideboard cards must be drawn from the actual next game deck');
-  console.log(JSON.stringify({engine:'forge',bo3:true,score:[1,2],sideboardWindows:4,actualSideboardDraw:true,coinChooser:true,previousLoserChooses:true,fullCardPoolVerified:false}));
+  for(const client of clients)assert.deepEqual(client.view!.snapshot!.winnerPlayerIds,[client.view!.snapshot!.players[1].id],'Final winner comes from Forge outcome');
+  console.log(JSON.stringify({engine:'forge',bo3:true,score:[1,2],sideboardWindows:4,actualSideboardDraw:true,coinChooser:true,previousLoserChooses:true,confirmedWinner:true,fullCardPoolVerified:false}));
 }finally{for(const c of clients)c.ws.close();await rooms.close();wss.close();server.close();}
