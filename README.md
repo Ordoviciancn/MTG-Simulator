@@ -4,7 +4,7 @@ MTG Simulator 是基于 Forge 规则引擎的万智牌双人桌面模拟器。�
 
 [下载安装包](https://github.com/Ordoviciancn/MTG-Simulator/releases/latest) · [使用指南](docs/一键联机与完整安装包.md) · [开发文档](docs/开发与构建.md)
 
-## 更新通告 · v0.1.5（2026-09-14）
+## 更新通告 · v0.1.6（2026-09-14）
 
 - 新增可选**一键汉化**：牌组工坊点击后，大厅、牌表与对局内切换中文牌名与卡图（默认英文显示，可随时关闭）。
 - 新增右侧半圆箭头**堆叠/历史面板**：有牌或异能进堆叠时自动展开，处理结束自动收回，也可随时手动查看真实堆叠与最近结算记录。
@@ -12,7 +12,7 @@ MTG Simulator 是基于 Forge 规则引擎的万智牌双人桌面模拟器。�
 - 修复连体/双面牌卡图错配（如“兴战尊贤 // 闪电击”不再顶替闪电击的卡图）。
 - 修复双方昵称相同时比分恒为对等（1:1、2:2）的计分错误。
 
-完整说明见 [Releases](https://github.com/Ordoviciancn/MTG-Simulator/releases/tag/v0.1.5)。
+完整说明见 [Releases](https://github.com/Ordoviciancn/MTG-Simulator/releases/tag/v0.1.6)。
 
 ## 功能
 
