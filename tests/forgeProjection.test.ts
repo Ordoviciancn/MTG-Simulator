@@ -54,12 +54,12 @@ test('spell animation targets expose only known observer references',()=>{
 test('new Forge game expires old card references while retaining public match score',()=>{
   const projection=new ForgeProjection(0,()=>['A','B']);
   const player=(id:number)=>({id,name:'Player',life:20,hand:[{id:10+id,ownerId:id,name:'Mountain',kind:'land'}],handCount:1,libraryCount:59,battlefield:[],graveyard:[],exile:[]});
-  const raw={type:'state',players:[player(0),player(1)],stack:[],phase:'MAIN1',activePlayerId:0,gameNumber:1,bestOf:3,scores:[0,0],coinWinnerSeat:1};
+  const raw={type:'state',players:[player(0),player(1)],stack:[],phase:'MAIN1',activePlayerId:0,gameNumber:1,bestOf:3,scores:[0,0]};
   const first=projection.snapshot(raw),old=first.players[0].hand[0].id;
   const second=projection.snapshot({...raw,gameNumber:2,scores:[0,1]});
   assert.equal(projection.resolveCard(old),undefined);
   assert.notEqual(second.players[0].hand[0].id,old);
-  assert.deepEqual(second.scores,[0,1]);assert.equal(second.coinWinnerSeat,1);assert.equal(second.players[1].hand.length,0);
+  assert.deepEqual(second.scores,[0,1]);assert.equal(second.players[1].hand.length,0);
 });
 
 test('result and combat effects use confirmed engine identities and discard unknown references',()=>{
@@ -87,4 +87,42 @@ test('library top projects revealed names and concealed backs with per-observer 
   const next=projector.snapshot({...raw,players:[p(0,null),p(1,null)]});
   assert.equal(next.players[0].libraryTop,null);
   assert.equal(projector.resolveCard(revealed),undefined);
+});
+
+test('counters project as public attributes while token flags stay concealed on face-down cards',()=>{
+  const projector=new ForgeProjection(0,()=>['A','B']);
+  const p=(id:number)=>({id,name:'Player',life:20,hand:[],handCount:0,libraryCount:50,battlefield:[
+    {id:10+id,ownerId:id,name:'Grizzly Bears',kind:'creature',counters:{'+1/+1':2,LOYAL:0},token:true},
+    {id:30+id,ownerId:id,name:'Face-down card',kind:'spell',counters:{'+1/+1':1}},
+  ],graveyard:[],exile:[]});
+  const view=projector.snapshot({type:'state',players:[p(0),p(1)],stack:[],phase:'MAIN1',activePlayerId:0});
+  // 零值指示物被剔除，计数对观察者公开（含对手的牌）。
+  const bear=view.players[0].battlefield[0];
+  assert.deepEqual(bear.counters,{'+1/+1':2});
+  assert.equal(bear.token,true);
+  assert.deepEqual(view.players[1].battlefield[0].counters,{'+1/+1':2});
+  // 牌面朝下时计数仍可见，但 token 标记不透传。
+  const morph=view.players[0].battlefield[1];
+  assert.equal(morph.hidden,true);
+  assert.deepEqual(morph.counters,{'+1/+1':1});
+  assert.equal(morph.token,undefined);
+});
+
+test('equipment attachment projects as a public host reference mapped per observer',()=>{
+  const projector=new ForgeProjection(0,()=>['A','B']);
+  const p=(id:number)=>({id,name:'Player',life:20,hand:[],handCount:0,libraryCount:50,battlefield:[
+    {id:10+id,ownerId:id,name:'Gray Ogre',kind:'creature'},
+    {id:20+id,ownerId:id,name:'Colossus Hammer',kind:'spell',attachedTo:10+id},
+  ],graveyard:[],exile:[]});
+  const view=projector.snapshot({type:'state',players:[p(0),p(1)],stack:[],phase:'MAIN1',activePlayerId:0});
+  const mine=view.players[0].battlefield;
+  assert.equal(mine[1].attachedTo,mine[0].id);
+  assert.equal(projector.resolveCard(mine[1].attachedTo!),10);
+  // 对手的佩戴关系同样公开，且指向其观察者视角的宿主句柄。
+  const theirs=view.players[1].battlefield;
+  assert.equal(theirs[1].attachedTo,theirs[0].id);
+  assert.notEqual(mine[1].attachedTo,theirs[1].attachedTo);
+  // 未佩戴的牌不携带 attachedTo。
+  const plain=new ForgeProjection(0,()=>['A','B']).snapshot({type:'state',players:[{id:0,name:'A',life:20,handCount:0,libraryCount:50,hand:[],battlefield:[{id:10,ownerId:0,name:'Mountain',kind:'land'}],graveyard:[],exile:[]},{id:1,name:'B',life:20,handCount:0,libraryCount:50,hand:[],battlefield:[],graveyard:[],exile:[]}],stack:[],phase:'MAIN1',activePlayerId:0});
+  assert.equal(plain.players[0].battlefield[0].attachedTo,undefined);
 });

@@ -49,7 +49,6 @@ try {
   assert.equal(clients[2].view,undefined);
   clients[1].send({type:'join',code,name:'Human B',deckText});
   await wait(()=>clients.some(c=>c.view?.prompt),120000);
-  assert.ok(clients.slice(0,2).every(c=>c.view?.snapshot?.coinChoicePending),'Coin stays visible while play/draw is pending');
   let resolved=false,verifiedDuplicate=false,blocked=false,summoningChecked=false,numericChosen=false,targetInputSeen=false,abilityPromptSeen=false;
   let ordered:{seat:number;name:string;handIds:string[]}|undefined;
   const done=(c:Client)=>cardTarget?targetInputSeen&&c.view?.snapshot?.players.some(p=>p.graveyard.some(card=>card.name==='Goblin Arsonist'))&&c.view.snapshot.players.some(p=>p.graveyard.some(card=>card.name==='Shock')):manland?c.view?.snapshot?.players.some(p=>p.battlefield.some(card=>card.name===spellName&&card.kind==='creature')):scry?ordered&&c.view?.seat===ordered.seat&&c.view.snapshot?.players[ordered.seat].hand.some(card=>!ordered!.handIds.includes(card.id))&&c.view.snapshot.players[ordered.seat].graveyard.some(card=>card.name===spellName):combat?blocked&&c.view?.snapshot?.players.some(p=>p.life<20):complete?c.view?.snapshot?.gameOver:c.view?.snapshot?.players.some(p=>p.life===(numeric?19:17));
@@ -129,7 +128,6 @@ try {
   await wait(()=>clients[0].view?.snapshot?.stack.length===0&&clients[0].view?.snapshot?.players.some(p=>p.graveyard.some(c=>c.name===spellName)));
   if(!scry)assert.ok(clients[0].events.includes('life'));assert.ok(clients[0].events.includes('cast'));assert.ok(clients[0].events.includes('resolve'));
   const credential=clients[0].credential!,before=clients[0].view!.snapshot!;
-  assert.equal(before.coinChoicePending,false,'Only the accepted play/draw decision dismisses the coin');
   clients[0].ws.close();await once(clients[0].ws,'close');
   const resumed=new Client();clients.push(resumed);await once(resumed.ws,'open');resumed.send({type:'resume',credential});await wait(()=>resumed.view);
   assert.deepEqual(resumed.view!.snapshot?.players.map(p=>p.life),before.players.map(p=>p.life));

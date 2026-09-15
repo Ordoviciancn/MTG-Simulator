@@ -64,7 +64,7 @@ pnpm start
 - `pnpm forge:network-smoke --x` 验证 Blaze 的 X=1、两块山脉支付、伤害、越界数值拒绝和数值窗口中的独立完全操控切换；数值选择不得由优先权确认替代。
 - `pnpm forge:network-smoke --scry` 验证 Preordain 占卜的可选移底、牌库顶排序和实际抽牌。Java 使用 Forge 的列表选择界面路径，私密选项只路由给所属座位；引擎原始异常留在服务端，不广播可能包含私密卡名的异常文本。
 - Forge 房间凭据由服务端随机生成，浏览器按标签页保存；客户端自报 playerId 不能代替座位凭据。外部卡牌引用按观察者分配，离开可见区域后失效。
-- 新建界面默认 BO3，协议未指定 bestOf 时仍为 BO1。`pnpm forge:bo3-smoke` 验证真实三局、四次私密换备、比分与换入牌抓取；首局 Forge 投币获胜者选择先后手，后续由上一局败者选择。备牌可用 Sideboard 分节或 SB: 前缀导入；换备沿用 Forge 顺序调用。
+- 新建界面默认 BO3，协议未指定 bestOf 时仍为 BO1。`pnpm forge:bo3-smoke` 验证真实三局、四次私密换备、比分与换入牌抓取；第一局由引擎掷币随机决定先后手，第二、三局由上一局败者在确认窗选择先手或后手。备牌可用 Sideboard 分节或 SB: 前缀导入；换备沿用 Forge 顺序调用。
 - `pnpm forge:network-smoke --manland` 验证米斯拉的工厂活化为 2/2。展示分区按当前生物类型优先于地类型，规则身份仍由 Forge 保留。
 - 牌桌根容器使用 overflow:clip，避免浏览器聚焦底部手牌时程序性滚动导致牌手徽章跳动。`useCardDrag.ts` 只负责指针表现，合法出牌仍交给 Forge。
 - `desktop/` 管理 Electron 宿主和打包。`pnpm desktop:build` 输出 `release/MTG Simulator-win32-x64/MTG Simulator.exe`，须保留整个目录；构建输出不提交。完整包内置 Forge/JDK，开发宿主可使用外部固定版本运行库，配置见 `desktop/桌面版说明.md`。
